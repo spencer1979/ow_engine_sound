@@ -52,7 +52,7 @@ void Task1code(void *parameters);
 //#define MANUAL_TRANS_DEBUG // uncomment it to debug the manual transmission
 //#define TRACKED_DEBUG // debugging tracked vehicle mode
 //#define SERVO_DEBUG // uncomment it for servo calibration in BUS communication mode
-
+//#define DEBUG_THROTTLE
 // TODO = Things to clean up!
 
 //
@@ -145,7 +145,8 @@ const int16_t maxRpm = 500;       // always 500
 const int16_t minRpm = 0;         // always 0
 int32_t currentRpm = 0;           // 0 - 500 (signed required!)
 volatile uint8_t engineState = 0; // Engine state
-enum EngineState                  // Engine state enum
+
+enum EngineState // Engine state enum
 {
   OFF,
   STARTING,
@@ -153,6 +154,7 @@ enum EngineState                  // Engine state enum
   STOPPING,
   PARKING_BRAKE
 };
+
 int16_t engineLoad = 0;                 // 0 - 500
 volatile uint16_t engineSampleRate = 0; // Engine sample rate
 int32_t speedLimit = maxRpm;            // The speed limit, depending on selected virtual gear
@@ -190,7 +192,15 @@ boolean indicatorLon = false;                  // Left indicator (Blinker links)
 boolean indicatorRon = false;                  // Right indicator (Blinker rechts)
 boolean fogLightOn = false;                    // Fog light is on
 boolean cannonFlash = false;                   // Flashing cannon fire
-
+// VESC var
+volatile balance_data balanceData;
+volatile vesc_data vescData;
+const int16_t maxDuty = 95; // 65% as max duty
+const int16_t minDuty = 1;  //  0%
+const int16_t maxErpm = 4000;
+const int16_t minErpm = 100;
+const uint32_t engineOffDelay = 500; // engine off delay
+unsigned long balanceLoopTime;
 volatile unsigned long timelast;
 unsigned long timelastloop;
 //// Initiate VescUart class
@@ -942,7 +952,8 @@ void setup()
   headLight.begin(LED1_PIN, 1, 20000); // Timer 1, 20kHz
 #endif
   tailLight.begin(LED3_PIN, 2, 20000); // Timer 2, 20kHz
-
+  // setup onewheel
+  ow_setup();
   // Neopixel setup
   FastLED.addLeds<NEOPIXEL, RGB_LED1_DATA_PIN>(rgb1LEDs, RGB_LED1_COUNT);
   FastLED.addLeds<NEOPIXEL, RGB_LED2_DATA_PIN>(rgb2LEDs, RGB_LED2_COUNT);
@@ -1015,10 +1026,42 @@ void dacOffsetFade()
 
 void mapThrottle()
 {
-  // TODO :Map vesc Duty to throttle
+  // TODO :Map vesc Duty to throttle or erpm
   // currentThrottle = map(pulseWidth[3], pulseMinNeutral[3], pulseMin[3], 0, 500);
 
-  currentThrottle = 0;
+  static float throttle = 0;
+  int max, min;
+
+#ifdef DUTY_TO_THROTTLE
+  throttle = fabsf(vescData.dutyCycleNow);
+  max = maxDuty;
+  min = minDuty;
+
+#else
+  throttle = vescData.rpmAbs;
+  max = maxErpm;
+  min = minErpm;
+#endif
+
+  if (throttle > min)
+  {
+    currentThrottle = map(throttle, min, max, 0, 500);
+  }
+  else
+  {
+    currentThrottle = 0;
+  }
+
+#ifdef DEBUG_THROTTLE
+  Serial.print("throttle:");
+  Serial.println(throttle);
+  Serial.print("currentRpm:");
+  Serial.println(currentRpm);
+  Serial.print("currentThrottle : ");
+  Serial.println(currentThrottle);
+  Serial.print("vescData.dutyCycleNow : ");
+  Serial.println(vescData.dutyCycleNow);
+#endif
 
   // Volume calculations --------------------------------------------------------------------------
   // As a base for some calculations below, fade the current throttle to make it more natural
@@ -1228,7 +1271,7 @@ void engineMassSimulation()
 #if defined JAKEBRAKE_ENGINE_SLOWDOWN && defined JAKE_BRAKE_SOUND
   // Use jake brake to slow down engine while releasing throttle in neutral or during upshifting while applying throttle
   // for some vehicles like Volvo FH open pipe. See example: https://www.youtube.com/watch?v=MU1iwzl33Zw&list=LL&index=4
-    static unsigned long blowoffMillis;
+  static unsigned long blowoffMillis;
   if (!wastegateTrigger)
     blowoffMillis = millis();
   blowoffTrigger = ((gearUpShiftingInProgress || neutralGear) && millis() - blowoffMillis > 20 && millis() - blowoffMillis < 250);
@@ -1239,42 +1282,99 @@ void engineMassSimulation()
 
 //
 // =======================================================================================================
+// MANUAL TAMIYA 3 SPEED GEARBOX DETECTION
+// =======================================================================================================
+//
+void gearboxDetection()
+{
+
+  static uint8_t previousGear = 1;
+  static boolean previousReverse;
+  static boolean sequentialLock;
+  static unsigned long upShiftingMillis;
+  static unsigned long downShiftingMillis;
+
+#if defined TRACKED_MODE // CH2 is used for left throttle in TRACKED_MODE --------------------------------
+  selectedGear = 2;
+
+#else // only active, if not in TRACKED_MODE -------------------------------------------------------------
+  // if automatic transmission, always 2nd gear
+  if (automatic || doubleClutch)
+    selectedGear = 2;
+  // Gear upshifting detection
+  if (selectedGear > previousGear)
+  {
+    gearUpShiftingInProgress = true;
+    gearUpShiftingPulse = true;
+    shiftingTrigger = true;
+    previousGear = selectedGear;
+  }
+
+  // Gear upshifting duration
+  if (!gearUpShiftingInProgress)
+    upShiftingMillis = millis();
+  if (millis() - upShiftingMillis > 700)
+    gearUpShiftingInProgress = false;
+
+  // Gear downshifting detection
+  if (selectedGear < previousGear)
+  {
+    gearDownShiftingInProgress = true;
+    gearDownShiftingPulse = true;
+    shiftingTrigger = true;
+    previousGear = selectedGear;
+  }
+
+  // Gear downshifting duration
+  if (!gearDownShiftingInProgress)
+    downShiftingMillis = millis();
+  if (millis() - downShiftingMillis > 300)
+    gearDownShiftingInProgress = false;
+
+  // Reverse gear engaging / disengaging detection
+  if (escInReverse != previousReverse)
+  {
+    previousReverse = escInReverse;
+    shiftingTrigger = true; // Play shifting sound
+  }
+
+#ifdef MANUAL_TRANS_DEBUG
+  static unsigned long manualTransDebugMillis;
+  if (millis() - manualTransDebugMillis > 100)
+  {
+    manualTransDebugMillis = millis();
+    Serial.println(currentThrottle);
+    Serial.println(selectedGear);
+    Serial.println(sequentialLock);
+    Serial.println(currentRpm);
+    Serial.println(currentSpeed);
+    Serial.println("");
+  }
+#endif
+
+#endif // End of not TRACKED_MODE -----------------------------------------------------------------------
+}
+
+//
+// =======================================================================================================
 // SWITCH ENGINE ON OR OFF (for automatic mode)
 // =======================================================================================================
 //
 
 void engineOnOff()
 {
-
-  // static unsigned long pulseDelayMillis; // TODO
-  static unsigned long idleDelayMillis;
-
-  // Engine automatically switched on or off depending on throttle position and 15s delay timne
-  if (currentThrottle > 80 || driveState != 0)
-    idleDelayMillis = millis(); // reset delay timer, if throttle not in neutral
-
-#ifdef AUTO_ENGINE_ON_OFF
-  if (millis() - idleDelayMillis > 15000)
+  static unsigned long engineOffTimer = millis();
+  if (balanceData.switchState < 2)
   {
-    engineOn = false; // after delay, switch engine off
+    if (millis() - engineOffTimer > engineOffDelay)
+    {
+      engineOn = false;
+    }
   }
-#endif
-
-#ifdef AUTO_LIGHTS
-  if (millis() - idleDelayMillis > 10000)
-  {
-    lightsOn = false; // after delay, switch light off
-  }
-#endif
-
-  // Engine start detection
-  if (currentThrottle > 100 && !airBrakeTrigger)
+  else
   {
     engineOn = true;
-
-#ifdef AUTO_LIGHTS
-    lightsOn = true;
-#endif
+    engineOffTimer = millis();
   }
 }
 
@@ -1360,6 +1460,457 @@ unsigned long loopDuration()
 void triggerHorn()
 {
 }
+//
+//===================================================== ===================================================== ===
+// initialize one wheel
+//===================================================== ===================================================== ===
+//
+void ow_setup()
+{
+  // set pin mode
+  pinMode(CSR_EN_PIN, OUTPUT);
+  pinMode(AUDIO_SOURCE_PIN, OUTPUT);
+  pinMode(PAM_MUTE_PIN, OUTPUT);
+  // audio mute
+  AUDIO_MUTE();
+  // csr8645 off
+  CSR_POWER_OFF();
+  // Serial port for debug
+  Serial.begin(115200);
+  // VESC serial
+  Serial2.begin(115200, SERIAL_8N1, ESP_VESC_TX_PIN, ESP_VESC_RX_PIN);
+  // VESC.setDebugPort(&Serial);
+  VESC.setSerialPort(&Serial2);
+  // read the loop time for the first time
+  get_balance_values(0);
+  if (balanceData.loopTime > 0)
+  {
+    balanceLoopTime = balanceData.loopTime;
+  }
+  else
+  {
+    balanceData.loopTime = 1000;
+  }
+
+  AUDIO_SOURCE_ESP();
+  AUDIO_UNMUTE();
+  engineOn = false;
+}
+
+//
+// =======================================================================================================
+// Get the vesc app balance data
+// =======================================================================================================
+//
+void get_balance_values(uint32_t loop_time)
+{
+  static uint32_t lastReadTime = micros();
+  if (loop_time > 0)
+  {
+    if (micros() - lastReadTime > loop_time)
+    {
+      if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
+      {
+        if (VESC.getAppBalanceValues())
+        {
+          balanceData.adc1 = VESC.appBalance.adc1;
+          balanceData.adc2 = VESC.appBalance.adc2;
+          balanceData.loopTime = VESC.appBalance.diffTime;
+          balanceData.motorCurrent = VESC.appBalance.motorCurrent;
+          balanceData.pidOutput = VESC.appBalance.pidOutput;
+          balanceData.pitch = VESC.appBalance.pitch;
+          balanceData.roll = VESC.appBalance.roll;
+          balanceData.state = VESC.appBalance.state;
+          balanceData.switchState = (SwitchState)VESC.appBalance.switchState;
+        }
+        else
+        {
+          balanceData.adc1 = 0;
+          balanceData.adc2 = 0;
+          balanceData.loopTime = 0;
+          balanceData.motorCurrent = 0;
+          balanceData.pidOutput = 0;
+          balanceData.pitch = 0;
+          balanceData.roll = 0;
+          balanceData.state = 0;
+          balanceData.switchState = SWITCH_OFF;
+        }
+
+        xSemaphoreGive(xVescSemaphore);
+      }
+      lastReadTime = micros();
+      // Switch engine on or off
+    }
+  }
+  else
+  {
+    if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
+    {
+      if (VESC.getAppBalanceValues())
+      {
+        balanceData.adc1 = VESC.appBalance.adc1;
+        balanceData.adc2 = VESC.appBalance.adc2;
+        balanceData.loopTime = VESC.appBalance.diffTime;
+        balanceData.motorCurrent = VESC.appBalance.motorCurrent;
+        balanceData.pidOutput = VESC.appBalance.pidOutput;
+        balanceData.pitch = VESC.appBalance.pitch;
+        balanceData.roll = VESC.appBalance.roll;
+        balanceData.state = VESC.appBalance.state;
+        balanceData.switchState = (SwitchState)VESC.appBalance.switchState;
+      }
+      else
+      {
+        balanceData.adc1 = 0;
+        balanceData.adc2 = 0;
+        balanceData.loopTime = 0;
+        balanceData.motorCurrent = 0;
+        balanceData.pidOutput = 0;
+        balanceData.pitch = 0;
+        balanceData.roll = 0;
+        balanceData.state = 0;
+        balanceData.switchState = SWITCH_OFF;
+      }
+
+      xSemaphoreGive(xVescSemaphore);
+    }
+  }
+
+#ifdef VESC_DEBUG
+  VESC.printAppBalanceValues();
+#endif // DEBUG
+}
+
+//
+// =======================================================================================================
+// Get the vesc main data
+// =======================================================================================================
+//
+
+void get_vesc_values(uint32_t loop_time)
+
+{
+
+  static uint32_t lastReadTime = micros();
+
+  if (loop_time > 0)
+  {
+    if (micros() - lastReadTime > loop_time)
+    {
+      if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
+      {
+        if (VESC.getVescValues())
+        {
+          vescData.rpm = VESC.data.rpm;
+          vescData.inpVoltage = VESC.data.inpVoltage;
+          vescData.inpVoltage = VESC.data.tempMosfet;
+          vescData.tempMotor = VESC.data.tempMotor;
+          vescData.dutyCycleNow = VESC.data.dutyCycleNow * 100; // % duty
+          vescData.rpm = VESC.data.rpm;
+          vescData.rpmAbs = abs(VESC.data.rpm);
+        }
+        else
+        {
+          vescData.rpm = 0;
+          vescData.inpVoltage = 0;
+          vescData.inpVoltage = 0;
+          vescData.tempMotor = 0;
+          vescData.dutyCycleNow = 0; // % duty
+          vescData.rpm = 0;
+          vescData.rpmAbs = 0;
+        }
+
+        xSemaphoreGive(xVescSemaphore);
+      }
+      lastReadTime = micros();
+    }
+  }
+  else
+  {
+
+    if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
+    {
+      if (VESC.getVescValues())
+      {
+        vescData.rpm = VESC.data.rpm;
+        vescData.inpVoltage = VESC.data.inpVoltage;
+        vescData.inpVoltage = VESC.data.tempMosfet;
+        vescData.tempMotor = VESC.data.tempMotor;
+        vescData.dutyCycleNow = VESC.data.dutyCycleNow * 100; // % duty
+        vescData.rpm = VESC.data.rpm;
+        vescData.rpmAbs = abs(VESC.data.rpm);
+      }
+      else
+      {
+        vescData.rpm = 0;
+        vescData.inpVoltage = 0;
+        vescData.inpVoltage = 0;
+        vescData.tempMotor = 0;
+        vescData.dutyCycleNow = 0; // % duty
+        vescData.rpm = 0;
+        vescData.rpmAbs = 0;
+      }
+
+      xSemaphoreGive(xVescSemaphore);
+    }
+  }
+
+#ifdef VESC_DEBUG
+  VESC.printVescValues();
+#endif // DEBUG
+}
+
+//
+// =======================================================================================================
+// ESC CONTROL
+// =======================================================================================================
+//
+
+// If you connect your ESC to pin 33, the vehicle inertia is simulated. Direct brake (crawler) ESC required
+// *** WARNING!! Do it at your own risk!! There is a falisafe function in case, the signal input from the
+// receiver is lost, but if the ESP32 crashes, the vehicle could get out of control!! ***
+
+void vesc()
+{
+
+#if not defined TRACKED_MODE // No ESC control in TRACKED_MODEl
+  static unsigned long escMillis;
+  static unsigned long lastStateTime;
+  static int8_t pulse;    // -1 = reverse, 0 = neutral, 1 = forward
+  static int8_t escPulse; // -1 = reverse, 0 = neutral, 1 = forward
+  static int8_t driveRampRate;
+  static int8_t driveRampGain;
+  static int8_t brakeRampRate;
+  static int16_t speed;
+  uint8_t escRampTime;
+  uint16_t max, min;
+  // Gear dependent ramp speed for acceleration & deceleration
+#if defined VIRTUAL_3_SPEED
+  escRampTime = escRampTimeThirdGear * 10 / virtualManualGearRatio[selectedGear];
+
+#elif defined VIRTUAL_16_SPEED_SEQUENTIAL
+  // escRampTime = escRampTimeThirdGear;// * 10 / map(virtualManualGearRatio[selectedGear], 155, 10, 23, 10);
+  escRampTime = escRampTimeThirdGear * virtualManualGearRatio[selectedGear] / 5;
+
+#else // TAMIYA 3 speed shifting transmission
+  if (selectedGear == 1)
+    escRampTime = escRampTimeFirstGear; // about 20
+  if (selectedGear == 2)
+    escRampTime = escRampTimeSecondGear; // about 50
+  if (selectedGear == 3)
+    escRampTime = escRampTimeThirdGear; // about 75
+#endif
+
+  if (automatic || doubleClutch)
+  {
+    escRampTime = escRampTimeSecondGear; // always use 2nd gear acceleration for automatic transmissions
+    if (escInReverse)
+      escRampTime = escRampTime * 100 / automaticReverseAccelerationPercentage; // faster acceleration in automatic reverse, EXPERIMENTAL, TODO!
+  }
+
+  if (millis() - escMillis > escRampTime)
+  { // About very 20 - 75ms
+    escMillis = millis();
+
+    // calulate throttle dependent brake & acceleration steps
+    brakeRampRate = map(currentThrottle, 0, 500, 1, escBrakeSteps);
+    driveRampRate = map(currentThrottle, 0, 500, 1, escAccelerationSteps);
+
+    // Comparators
+    if (vescData.rpmAbs > 60) // Not standing still
+    {
+
+      // positive erpm
+      if (vescData.rpm > 0) // forward
+      {
+        if (balanceData.pidOutput > -2) // positive current(pid)    balanceData.motorCurrent or balanceData.pidOutput
+        {
+          // forward
+          escPulse = 1;
+          pulse = 1;
+        }
+        else // Negative current(pid)
+
+        {
+          // braking forward
+          pulse = 0;
+          escPulse = 1;
+        }
+      }
+      else if (vescData.rpm < 0) // backward
+
+      {
+        if (balanceData.pidOutput < -2) // positive current(pid)    balanceData.motorCurrent or balanceData.pidOutput
+        {
+          // backward
+          escPulse = -1;
+          pulse = 0;
+        }
+        else // Negative current(pid)
+        {
+
+          // braking backward
+          pulse = 1;
+          escPulse = -1;
+        }
+      }
+    }
+    else ////  standing still
+    {
+      pulse = 1;
+      escPulse = 1;
+    }
+
+#ifdef ESC_DEBUG
+    if (millis() - lastStateTime > 300)
+    { // Print the data every 300ms
+      lastStateTime = millis();
+      Serial.println(driveState);
+      Serial.println(pulse);
+      Serial.println(escPulse);
+      Serial.println(escPulseMin);
+      Serial.println(escPulseMax);
+      Serial.println(brakeRampRate);
+      Serial.println(currentRpm);
+      Serial.println(escPulseWidth);
+      Serial.println(escPulseWidthOut);
+      Serial.println(currentSpeed);
+      Serial.println(speedLimit);
+      Serial.println("");
+    }
+#endif
+
+    // Drive state state machine **********************************************************************************
+    switch (driveState)
+    {
+
+    case 0: // Standing still ---------------------------------------------------------------------
+      escIsBraking = false;
+      escInReverse = false;
+      escIsDriving = false;
+#ifdef VIRTUAL_16_SPEED_SEQUENTIAL
+      selectedGear = 1;
+#endif
+
+      if (pulse == 1 && engineRunning && !neutralGear)
+        driveState = 1; // Driving forward
+      if (pulse == -1 && engineRunning && !neutralGear)
+        driveState = 3; // Driving backwards
+      break;
+
+    case 1: // Driving forward ---------------------------------------------------------------------
+      escIsBraking = false;
+      escInReverse = false;
+      escIsDriving = true;
+
+      if (gearUpShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch)
+      {                                                                    // lowering RPM, if shifting up transmission
+
+        gearUpShiftingPulse = false;
+      }
+      if (gearDownShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch)
+      {                                                                    // increasing RPM, if shifting down transmission
+        gearDownShiftingPulse = false;
+      }
+
+      if (pulse == -1 && escPulse == 1)
+        driveState = 2; // Braking forward
+      if (pulse == 0 && escPulse == 0)
+        driveState = 0; // standing still
+      break;
+
+    case 2: // Braking forward ---------------------------------------------------------------------
+      escIsBraking = true;
+      escInReverse = false;
+      escIsDriving = false;
+
+      if (pulse == 0 && escPulse == 1 && !neutralGear)
+      {
+        driveState = 1; // Driving forward
+        airBrakeTrigger = true;
+      }
+      if (pulse == 0 && escPulse == 0)
+      {
+        driveState = 0; // standing still
+        airBrakeTrigger = true;
+      }
+      break;
+
+    case 3: // Driving backwards ---------------------------------------------------------------------
+      escIsBraking = false;
+      escInReverse = true;
+      escIsDriving = true;
+      if (gearUpShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch)
+      { // lowering RPM, if shifting up transmission
+        gearUpShiftingPulse = false;
+      }
+      if (gearDownShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch)
+      { // increasing RPM, if shifting down transmission
+
+        gearDownShiftingPulse = false;
+      }
+
+      if (pulse == 1 && escPulse == -1)
+        driveState = 4; // Braking backwards
+      if (pulse == 0 && escPulse == 0)
+        driveState = 0; // standing still
+      break;
+
+    case 4: // Braking backwards ---------------------------------------------------------------------
+      escIsBraking = true;
+      escInReverse = true;
+      escIsDriving = false;
+
+      if (pulse == 0 && escPulse == -1 && !neutralGear)
+      {
+        driveState = 3; // Driving backwards
+        airBrakeTrigger = true;
+      }
+      if (pulse == 0 && escPulse == 0)
+      {
+        driveState = 0; // standing still
+        airBrakeTrigger = true;
+      }
+      break;
+
+    } // End of state machine **********************************************************************************
+
+    // Gain for drive ramp rate, depending on clutchEngagingPoint
+    if (currentSpeed < clutchEngagingPoint)
+    {
+      if (!automatic && !doubleClutch)
+        driveRampGain = 2; // prevent clutch from slipping too much (2)
+      else
+        driveRampGain = 4; // Automatic transmission needs to catch immediately (4)
+    }
+    else
+    {
+      driveRampGain = 1;
+    }
+
+    // Calculate a speed value from the pulsewidth signal (used as base for engine sound RPM while clutch is engaged)
+
+#ifdef DUTY_TO_THROTTLE
+    speed = (uint16_t)fabsf(vescData.dutyCycleNow);
+    max = maxDuty;
+    min = minDuty;
+#else
+
+    speed = (uint16_t)vescData.rpmAbs;
+    max = maxErpm;
+    min = minErpm;
+#endif
+
+    if (speed > min)
+    {
+      currentSpeed = map(speed, min, max, 0, 500);
+    }
+    else
+    {
+      currentSpeed = 0;
+    }
+  }
+#endif
+}
 
 //
 // =======================================================================================================
@@ -1371,6 +1922,9 @@ void loop()
 {
   // TODO: vesc get data from here
 
+  get_vesc_values(balanceLoopTime);
+  get_balance_values(balanceLoopTime);
+  engineOnOff();
   // Map pulsewidth to throttle
   mapThrottle();
 
@@ -1403,8 +1957,9 @@ void Task1code(void *pvParameters)
     if (automatic || doubleClutch)
       automaticGearSelector();
 
-    // Switch engine on or off
-    engineOnOff();
+    // Gearbox detection
+    // gearboxDetection();
+    vesc();
     // measure loop time
     // loopTime = loopDuration(); // for debug only
   }

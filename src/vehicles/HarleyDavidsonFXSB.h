@@ -2,11 +2,11 @@
 
 // Sound files (22'050 Hz, 8 bit PCM recommended) -----------------------------------------------------------------------
 // Choose the start sound (uncomment the one you want) --------
-volatile int startVolumePercentage = 90; // Adjust the start volume (usually = 100%)
+volatile int startVolumePercentage = 100; // Adjust the start volume (usually = 100%)
 #include "sounds/HarleyDavidsonFXSBStart.h" // Harley Davidson FXSB start
 
 // Choose the motor idle sound (uncomment the one you want) --------
-volatile int idleVolumePercentage = 60; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
+volatile int idleVolumePercentage = 70; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
 volatile int engineIdleVolumePercentage = 60; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
 volatile int fullThrottleVolumePercentage = 150; // Volume Percentage while full throttle (for rev sound as well)
 #include "sounds/HarleyDavidsonFXSBIdle.h" // Harley Davidson FXSB
@@ -17,6 +17,7 @@ volatile int revVolumePercentage = 60; // Adjust the idle volume (usually = 100%
 volatile int engineRevVolumePercentage = 60; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
 const uint16_t revSwitchPoint = 200; // The rev sound is played instead of the idle sound above this point
 const uint16_t idleEndPoint = 500; // above this point, we have 100% rev and 0% idle sound volume (usually 500, min. 50 more than revSwitchPoint)
+volatile const uint16_t idleVolumeProportionPercentage = 0; 
 #ifdef REV_SOUND
 #include "sounds/HarleyDavidsonFXSBrev.h" // Harley Davidson FXSB
 #endif
@@ -141,7 +142,7 @@ const uint8_t escBrakeSteps = 30; // determines, how fast the ESC is able to bra
 const uint8_t escAccelerationSteps = 3; // determines, how fast the ESC is able to accelerate (2 - 3, 3 for King Hauler)
 
 // Gearbox parameters (select number of automatic gears in curves.h)-----------------------------------------------------
-const boolean automatic = false; // false = linear rpm curve, true = automatic transmission with torque converter is simulated (use it, if you don't have a real shifting transmission)
+const boolean automatic = true; // false = linear rpm curve, true = automatic transmission with torque converter is simulated (use it, if you don't have a real shifting transmission)
 #define NumberOfAutomaticGears 3 // <<------- Select 3, 4 or 6 gears!
 const boolean doubleClutch = false; // do not activate it at the same time as automatic!
 const boolean shiftingAutoThrottle = true; // For Tamiya 3 speed tansmission, throttle is altered for synchronizing, if "true"

@@ -11,7 +11,7 @@
 #ifndef OW_CONTROL_CONFIG_H_
 #define OW_CONTROL_CONFIG_H_
 #include <Arduino.h>
-
+#define DUTY_TO_THROTTLE // you want to vesc dutycycle as throttle else use abd ermp as throttle 
 #define ESP32_DEBUG // DEBUG ESP32 
 #define USE_DUAL_HEAD_LIGHT // USE dual led  for headlight
 #define USE_RGB_LED         // use ws2812 RGB led
@@ -32,10 +32,10 @@
 #define PAM_MUTE_PIN 13 //pcb board will modify the pin 
 #define AUDIO_MUTE() digitalWrite(PAM_MUTE_PIN,LOW) //active lOW 
 #define AUDIO_UNMUTE() digitalWrite(PAM_MUTE_PIN,HIGH) 
-// CSR8645 BLE module power on/off (contorl the LDO)
+// CSR8645 BLE module power on/off (control en pin )
 #define CSR_EN_PIN 5
-#define CSR_POWER_ON() digitalWrite(CSR_EN_PIN, LOW)
-#define CSR_POWER_OFF() digitalWrite(CSR_EN_PIN,HIGH)
+#define CSR_POWER_ON() digitalWrite(CSR_EN_PIN, HIGH)
+#define CSR_POWER_OFF() digitalWrite(CSR_EN_PIN,LOW) // pull en pin low to power off 
 // ESP32 DAC
 #define ESP_DAC1_PIN 25
 #define ESP_DAC2_PIN 26
@@ -64,5 +64,56 @@ volatile int outOfFuelVolumePercentage = 80; // Adjust the message volume in %
 #define RGB_LED1_COUNT 8
 #define RGB_LED2_DATA_PIN 2
 #define RGB_LED2_COUNT 8
+// balance state
+typedef enum
+{
+  STARTUP = 0,
+  RUN = 1,
+  RUN_TILTBACK_DUTY = 2,
+  RUN_TILTBACK_HIGH_VOLTAGE = 3,
+  RUN_TILTBACK_LOW_VOLTAGE = 4,
+  FAULT_ANGLE_PITCH = 6,
+  FAULT_ANGLE_ROLL = 7,
+  FAULT_SWITCH_HALF = 8,
+  FAULT_SWITCH_FULL = 9,
+  FAULT_DUTY = 10,
+  FAULT_STARTUP = 11,
+
+} BalanceState;
+// switch state
+typedef enum
+{
+  SWITCH_OFF = 0,
+  SWITCH_HALF,
+  SWITCH_ON
+} SwitchState;
+
+
+struct balance_data
+{
+
+  volatile float pidOutput;
+  volatile float pitch;
+  volatile float roll;
+  volatile uint32_t loopTime;
+  volatile float motorCurrent;
+  // float debug1; // unwant skip it
+  volatile uint16_t state;
+  volatile SwitchState switchState;
+  volatile float adc1;
+  volatile float adc2;
+};
+
+struct vesc_data
+{
+  float avgMotorCurrent;
+  float avgInputCurrent;
+  float dutyCycleNow;
+  float rpm;
+  float rpmAbs;
+  float inpVoltage;
+  float tempMosfet;
+  float tempMotor;
+};
 
 #endif
