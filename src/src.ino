@@ -21,6 +21,7 @@ const float codeVersion = 8.2; // Software revision.
 #include <Arduino.h>
 #include "ow_control_config.h"
 #include <VescUart.h> //VESC uart communication
+
 void Task1code(void *parameters);
 
 //
@@ -193,14 +194,12 @@ boolean indicatorRon = false;                  // Right indicator (Blinker recht
 boolean fogLightOn = false;                    // Fog light is on
 boolean cannonFlash = false;                   // Flashing cannon fire
 // VESC var
-volatile balance_data balanceData;
-volatile vesc_data vescData;
 const int16_t maxDuty = 95; // 65% as max duty
 const int16_t minDuty = 1;  //  0%
 const int16_t maxErpm = 4000;
 const int16_t minErpm = 100;
-const uint32_t engineOffDelay = 500; // engine off delay
-unsigned long balanceLoopTime;
+const uint32_t engineOffDelay = 5000; // engine off delay
+unsigned long vescReadDelay;
 volatile unsigned long timelast;
 unsigned long timelastloop;
 //// Initiate VescUart class
@@ -233,7 +232,7 @@ volatile uint32_t fixedTimerTicks = maxSampleInterval;
 
 // Declare a mutex Semaphore Handle which we will use to manage the Serial Port.
 // It will be used to ensure only only one Task is accessing this resource at any time.
-SemaphoreHandle_t xPwmSemaphore;
+SemaphoreHandle_t xRpmSemaphore;
 SemaphoreHandle_t xVescSemaphore;
 //
 // =======================================================================================================
@@ -473,6 +472,7 @@ void IRAM_ATTR variablePlaybackTimer()
       engineState = PARKING_BRAKE;
       engineStop = false;
     }
+    
     break;
 
   case PARKING_BRAKE: // parking brake bleeding air sound after engine is off ----------------------------
@@ -932,11 +932,11 @@ void setup()
   // Semaphores are useful to stop a Task proceeding, where it should be paused to wait,
   // because it is sharing a resource, such as the PWM variable.
   // Semaphores should only be used whilst the scheduler is running, but we can set it up here.
-  if (xPwmSemaphore == NULL) // Check to confirm that the PWM Semaphore has not already been created.
+  if (xRpmSemaphore == NULL) // Check to confirm that the PWM Semaphore has not already been created.
   {
-    xPwmSemaphore = xSemaphoreCreateMutex(); // Create a mutex semaphore we will use to manage variable access
-    if ((xPwmSemaphore) != NULL)
-      xSemaphoreGive((xPwmSemaphore)); // Make the PWM variable available for use, by "Giving" the Semaphore.
+    xRpmSemaphore = xSemaphoreCreateMutex(); // Create a mutex semaphore we will use to manage variable access
+    if ((xRpmSemaphore) != NULL)
+      xSemaphoreGive((xRpmSemaphore)); // Make the PWM variable available for use, by "Giving" the Semaphore.
   }
   if (xVescSemaphore == NULL) // Check to confirm that the PWM Semaphore has not already been created.
   {
@@ -1033,19 +1033,19 @@ void mapThrottle()
   int max, min;
 
 #ifdef DUTY_TO_THROTTLE
-  throttle = fabsf(vescData.dutyCycleNow);
-  max = maxDuty;
-  min = minDuty;
+  throttle = fabsf(VESC.appData.pitch);
+  max = 90;
+  min = 1;
 
 #else
-  throttle = vescData.rpmAbs;
+  throttle = fabsf(VESC.appData.erpm);
   max = maxErpm;
   min = minErpm;
 #endif
 
   if (throttle > min)
   {
-    currentThrottle = map(throttle, min, max, 0, 500);
+    currentThrottle = map((uint16_t)throttle, min, max, 0, 500);
   }
   else
   {
@@ -1363,19 +1363,6 @@ void gearboxDetection()
 
 void engineOnOff()
 {
-  static unsigned long engineOffTimer = millis();
-  if (balanceData.switchState < 2)
-  {
-    if (millis() - engineOffTimer > engineOffDelay)
-    {
-      engineOn = false;
-    }
-  }
-  else
-  {
-    engineOn = true;
-    engineOffTimer = millis();
-  }
 }
 
 //
@@ -1467,6 +1454,7 @@ void triggerHorn()
 //
 void ow_setup()
 {
+#define VESC_DEBUG
   // set pin mode
   pinMode(CSR_EN_PIN, OUTPUT);
   pinMode(AUDIO_SOURCE_PIN, OUTPUT);
@@ -1479,105 +1467,15 @@ void ow_setup()
   Serial.begin(115200);
   // VESC serial
   Serial2.begin(115200, SERIAL_8N1, ESP_VESC_TX_PIN, ESP_VESC_RX_PIN);
-  // VESC.setDebugPort(&Serial);
+#ifdef VESC_DEBUG
+  VESC.setDebugPort(&Serial);
+#endif
   VESC.setSerialPort(&Serial2);
-  // read the loop time for the first time
-  get_balance_values(0);
-  if (balanceData.loopTime > 0)
-  {
-    balanceLoopTime = balanceData.loopTime;
-  }
-  else
-  {
-    balanceData.loopTime = 1000;
-  }
 
   AUDIO_SOURCE_ESP();
   AUDIO_UNMUTE();
   engineOn = false;
-}
-
-//
-// =======================================================================================================
-// Get the vesc app balance data
-// =======================================================================================================
-//
-void get_balance_values(uint32_t loop_time)
-{
-  static uint32_t lastReadTime = micros();
-  if (loop_time > 0)
-  {
-    if (micros() - lastReadTime > loop_time)
-    {
-      if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
-      {
-        if (VESC.getAppBalanceValues())
-        {
-          balanceData.adc1 = VESC.appBalance.adc1;
-          balanceData.adc2 = VESC.appBalance.adc2;
-          balanceData.loopTime = VESC.appBalance.diffTime;
-          balanceData.motorCurrent = VESC.appBalance.motorCurrent;
-          balanceData.pidOutput = VESC.appBalance.pidOutput;
-          balanceData.pitch = VESC.appBalance.pitch;
-          balanceData.roll = VESC.appBalance.roll;
-          balanceData.state = VESC.appBalance.state;
-          balanceData.switchState = (SwitchState)VESC.appBalance.switchState;
-        }
-        else
-        {
-          balanceData.adc1 = 0;
-          balanceData.adc2 = 0;
-          balanceData.loopTime = 0;
-          balanceData.motorCurrent = 0;
-          balanceData.pidOutput = 0;
-          balanceData.pitch = 0;
-          balanceData.roll = 0;
-          balanceData.state = 0;
-          balanceData.switchState = SWITCH_OFF;
-        }
-
-        xSemaphoreGive(xVescSemaphore);
-      }
-      lastReadTime = micros();
-      // Switch engine on or off
-    }
-  }
-  else
-  {
-    if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
-    {
-      if (VESC.getAppBalanceValues())
-      {
-        balanceData.adc1 = VESC.appBalance.adc1;
-        balanceData.adc2 = VESC.appBalance.adc2;
-        balanceData.loopTime = VESC.appBalance.diffTime;
-        balanceData.motorCurrent = VESC.appBalance.motorCurrent;
-        balanceData.pidOutput = VESC.appBalance.pidOutput;
-        balanceData.pitch = VESC.appBalance.pitch;
-        balanceData.roll = VESC.appBalance.roll;
-        balanceData.state = VESC.appBalance.state;
-        balanceData.switchState = (SwitchState)VESC.appBalance.switchState;
-      }
-      else
-      {
-        balanceData.adc1 = 0;
-        balanceData.adc2 = 0;
-        balanceData.loopTime = 0;
-        balanceData.motorCurrent = 0;
-        balanceData.pidOutput = 0;
-        balanceData.pitch = 0;
-        balanceData.roll = 0;
-        balanceData.state = 0;
-        balanceData.switchState = SWITCH_OFF;
-      }
-
-      xSemaphoreGive(xVescSemaphore);
-    }
-  }
-
-#ifdef VESC_DEBUG
-  VESC.printAppBalanceValues();
-#endif // DEBUG
+  sound1trigger=true;
 }
 
 //
@@ -1586,77 +1484,25 @@ void get_balance_values(uint32_t loop_time)
 // =======================================================================================================
 //
 
-void get_vesc_values(uint32_t loop_time)
+bool get_vesc_values(uint32_t loop_time)
 
 {
+  bool is_read = false;
+  static uint32_t lastReadTime = millis();
 
-  static uint32_t lastReadTime = micros();
-
-  if (loop_time > 0)
-  {
-    if (micros() - lastReadTime > loop_time)
-    {
-      if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
-      {
-        if (VESC.getVescValues())
-        {
-          vescData.rpm = VESC.data.rpm;
-          vescData.inpVoltage = VESC.data.inpVoltage;
-          vescData.inpVoltage = VESC.data.tempMosfet;
-          vescData.tempMotor = VESC.data.tempMotor;
-          vescData.dutyCycleNow = VESC.data.dutyCycleNow * 100; // % duty
-          vescData.rpm = VESC.data.rpm;
-          vescData.rpmAbs = abs(VESC.data.rpm);
-        }
-        else
-        {
-          vescData.rpm = 0;
-          vescData.inpVoltage = 0;
-          vescData.inpVoltage = 0;
-          vescData.tempMotor = 0;
-          vescData.dutyCycleNow = 0; // % duty
-          vescData.rpm = 0;
-          vescData.rpmAbs = 0;
-        }
-
-        xSemaphoreGive(xVescSemaphore);
-      }
-      lastReadTime = micros();
-    }
-  }
-  else
+  if (millis() - lastReadTime > loop_time)
   {
 
-    if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
-    {
-      if (VESC.getVescValues())
-      {
-        vescData.rpm = VESC.data.rpm;
-        vescData.inpVoltage = VESC.data.inpVoltage;
-        vescData.inpVoltage = VESC.data.tempMosfet;
-        vescData.tempMotor = VESC.data.tempMotor;
-        vescData.dutyCycleNow = VESC.data.dutyCycleNow * 100; // % duty
-        vescData.rpm = VESC.data.rpm;
-        vescData.rpmAbs = abs(VESC.data.rpm);
-      }
-      else
-      {
-        vescData.rpm = 0;
-        vescData.inpVoltage = 0;
-        vescData.inpVoltage = 0;
-        vescData.tempMotor = 0;
-        vescData.dutyCycleNow = 0; // % duty
-        vescData.rpm = 0;
-        vescData.rpmAbs = 0;
-      }
+    is_read = VESC.getCustomValues();
 
-      xSemaphoreGive(xVescSemaphore);
-    }
+    lastReadTime = micros();
   }
 
 #ifdef VESC_DEBUG
-  VESC.printVescValues();
+  VESC.printCustomValues();
 #endif // DEBUG
+
+  return is_read;
 }
 
 //
@@ -1716,13 +1562,13 @@ void vesc()
     driveRampRate = map(currentThrottle, 0, 500, 1, escAccelerationSteps);
 
     // Comparators
-    if (vescData.rpmAbs > 60) // Not standing still
+    if (fabsf(VESC.appData.erpm) > 60) // Not standing still
     {
 
       // positive erpm
-      if (vescData.rpm > 0) // forward
+      if (VESC.appData.erpm > 0) // forward
       {
-        if (balanceData.pidOutput > -2) // positive current(pid)    balanceData.motorCurrent or balanceData.pidOutput
+        if (VESC.appData.pidOutput > -2) // positive current(pid)    balanceData.motorCurrent or balanceData.pidOutput
         {
           // forward
           escPulse = 1;
@@ -1736,10 +1582,10 @@ void vesc()
           escPulse = 1;
         }
       }
-      else if (vescData.rpm < 0) // backward
+      else if (VESC.appData.erpm < 0) // backward
 
       {
-        if (balanceData.pidOutput < -2) // positive current(pid)    balanceData.motorCurrent or balanceData.pidOutput
+        if (VESC.appData.pidOutput < -2) // positive current(pid)    balanceData.motorCurrent or balanceData.pidOutput
         {
           // backward
           escPulse = -1;
@@ -1803,12 +1649,12 @@ void vesc()
       escIsDriving = true;
 
       if (gearUpShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch)
-      {                                                                    // lowering RPM, if shifting up transmission
+      { // lowering RPM, if shifting up transmission
 
         gearUpShiftingPulse = false;
       }
       if (gearDownShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch)
-      {                                                                    // increasing RPM, if shifting down transmission
+      { // increasing RPM, if shifting down transmission
         gearDownShiftingPulse = false;
       }
 
@@ -1890,19 +1736,19 @@ void vesc()
     // Calculate a speed value from the pulsewidth signal (used as base for engine sound RPM while clutch is engaged)
 
 #ifdef DUTY_TO_THROTTLE
-    speed = (uint16_t)fabsf(vescData.dutyCycleNow);
-    max = maxDuty;
-    min = minDuty;
+    speed = fabsf(VESC.appData.pitch);
+    max = 90;
+    min = 1;
 #else
 
-    speed = (uint16_t)vescData.rpmAbs;
+    speed = fabsf(VESC.appData.erpm);
     max = maxErpm;
     min = minErpm;
 #endif
 
     if (speed > min)
     {
-      currentSpeed = map(speed, min, max, 0, 500);
+      currentSpeed = map((uint16_t)speed, min, max, 0, 500);
     }
     else
     {
@@ -1922,11 +1768,44 @@ void loop()
 {
   // TODO: vesc get data from here
 
-  get_vesc_values(balanceLoopTime);
-  get_balance_values(balanceLoopTime);
-  engineOnOff();
+  //
+  if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
+  {
+    if (get_vesc_values(100))
+    {
+      static unsigned long engineOffTimer = millis();
+      if (VESC.appData.switchState < 2)
+      {
+        if (millis() - engineOffTimer > engineOffDelay)
+        {
+          engineOn = false;
+
+        }
+      }
+      else
+      {
+      
+        engineOn = true;
+        AUDIO_UNMUTE();
+        engineOffTimer = millis();
+      }
+    }
+    else
+
+    {
+      engineOn = false;
+     
+    }
+    xSemaphoreGive(xVescSemaphore); // Now free or "Give" the semaphore for others.
+  }
   // Map pulsewidth to throttle
-  mapThrottle();
+  if (xSemaphoreTake(xRpmSemaphore, portMAX_DELAY))
+  {
+
+    // Map pulsewidth to throttle
+    mapThrottle();
+    xSemaphoreGive(xRpmSemaphore); // Now free or "Give" the semaphore for others.
+  }
 
   // Horn triggering
   triggerHorn();
@@ -1949,16 +1828,24 @@ void Task1code(void *pvParameters)
 
     // DAC offset fader
     dacOffsetFade();
+    if (xSemaphoreTake(xRpmSemaphore, portMAX_DELAY))
+    {
+      // Simulate engine mass, generate RPM signal
+      engineMassSimulation();
 
-    // Simulate engine mass, generate RPM signal
-    engineMassSimulation();
+      // Call gear selector
+      if (automatic || doubleClutch)
+        automaticGearSelector();
 
-    // Call gear selector
-    if (automatic || doubleClutch)
-      automaticGearSelector();
+      xSemaphoreGive(xRpmSemaphore); // Now free or "Give" the semaphore for others.
+    }
 
     // Gearbox detection
-    // gearboxDetection();
+    gearboxDetection();
+
+    // Switch engine on or off
+    // engineOnOff();
+
     vesc();
     // measure loop time
     // loopTime = loopDuration(); // for debug only

@@ -120,13 +120,13 @@ volatile int shiftingVolumePercentage = 100; // Adjust the shifting volume (usua
 #include "sounds/ClunkingGearShifting.h" // Manual clunking shifting sound
 
 // Choose the additional "sound1" (uncomment the one you want) --------
-volatile int sound1VolumePercentage = 100; // Adjust the sound1 volume (usually = 100%)
+volatile int sound1VolumePercentage = 50; // Adjust the sound1 volume (usually = 100%)
 //#include "sounds/EMDLocomotiveBell.h" // American EMD locomotive bell
 //#include "sounds/007JamesBond.h" // James Bond melody
 //#include "sounds/M2Fire.h" // M2 salve
 //#include "sounds/GlenCanyon.h" // Glen Canyon country song for truckers ;-)
 //#include "sounds/door.h" // opening and closing the door
-#include "sounds/Pigs.h" // pig transporter for Onkel_Tom ;-)
+#include "sounds/wellcome.h" // pig transporter for Onkel_Tom ;-)
 
 // Choose the reversing beep sound --------
 volatile int reversingVolumePercentage = 70; // Adjust the reversing sound volume (usually = 70%)
@@ -160,7 +160,7 @@ const uint8_t escBrakeSteps = 30; // determines, how fast the ESC is able to bra
 const uint8_t escAccelerationSteps = 3; // determines, how fast the ESC is able to accelerate (2 - 3, 3 for King Hauler)
 
 // Gearbox parameters (select number of automatic gears in curves.h)-----------------------------------------------------
-const boolean automatic = false; // false = linear rpm curve, true = automatic transmission with torque converter is simulated (use it, if you don't have a real shifting transmission)
+const boolean automatic = true; // false = linear rpm curve, true = automatic transmission with torque converter is simulated (use it, if you don't have a real shifting transmission)
 #define NumberOfAutomaticGears 3 // <<------- Select 3, 4 or 6 gears!
 const boolean doubleClutch = false; // do not activate it at the same time as automatic!
 const boolean shiftingAutoThrottle = true; // For Tamiya 3 speed tansmission, throttle is altered for synchronizing, if "true"

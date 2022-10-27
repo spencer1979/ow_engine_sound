@@ -88,10 +88,8 @@ typedef enum
   SWITCH_ON
 } SwitchState;
 
-
-struct balance_data
-{
-
+struct vesc_data
+{ 
   volatile float pidOutput;
   volatile float pitch;
   volatile float roll;
@@ -100,20 +98,11 @@ struct balance_data
   // float debug1; // unwant skip it
   volatile uint16_t state;
   volatile SwitchState switchState;
-  volatile float adc1;
-  volatile float adc2;
-};
+  volatile uint16_t killSwMode;
+  volatile float dutyCycle;
+  volatile float erpm;
+  volatile float inputVoltage;
 
-struct vesc_data
-{
-  float avgMotorCurrent;
-  float avgInputCurrent;
-  float dutyCycleNow;
-  float rpm;
-  float rpmAbs;
-  float inpVoltage;
-  float tempMosfet;
-  float tempMotor;
 };
 
 #endif
