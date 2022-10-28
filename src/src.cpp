@@ -22,15 +22,9 @@ char codeVersion[] = "9.10.0"; // Software revision.
 
 // This stuff is required for Visual Studio Code IDE, if .ino is renamed into .cpp!
 #include <Arduino.h>
+#include "ow_control_config.h"
+#include <VescUart.h> //VESC uart communication
 void Task1code(void *parameters);
-void readSbusCommands();
-void readIbusCommands();
-void readSumdCommands();
-void readPpmCommands();
-void readPwmSignals();
-void processRawChannels();
-void failsafeRcSignals();
-void channelZero();
 float batteryVolts();
 
 //
@@ -58,15 +52,15 @@ float batteryVolts();
 
 // All the required user settings are done in the following .h files:
 #include "1_adjustmentsVehicle.h"       // <<------- Select the vehicle you want to simulate
-#include "2_adjustmentsRemote.h"        // <<------- Remote control system related adjustments
+//#include "2_adjustmentsRemote.h"        // <<------- Remote control system related adjustments
 #include "3_adjustmentsESC.h"           // <<------- ESC related adjustments
 #include "4_adjustmentsTransmission.h"  // <<------- Transmission related adjustments
-#include "5_adjustmentsShaker.h"        // <<------- Shaker related adjustments
+//#include "5_adjustmentsShaker.h"        // <<------- Shaker related adjustments
 #include "6_adjustmentsLights.h"        // <<------- Lights related adjustments
-#include "7_adjustmentsServos.h"        // <<------- Servo output related adjustments
+//#include "7_adjustmentsServos.h"        // <<------- Servo output related adjustments
 #include "8_adjustmentsSound.h"         // <<------- Sound related adjustments
-#include "9_adjustmentsDashboard.h"     // <<------- Dashboard related adjustments
-#include "10_adjustmentsTrailer.h"      // <<------- Trailer related adjustments
+//#include "9_adjustmentsDashboard.h"     // <<------- Dashboard related adjustments
+//#include "10_adjustmentsTrailer.h"      // <<------- Trailer related adjustments
 
 // DEBUG options can slow down the playback loop! Only uncomment them for debugging, may slow down your system!
 //#define CHANNEL_DEBUG // uncomment it for input signal & general debugging informations
@@ -92,10 +86,9 @@ float batteryVolts();
 #include <statusLED.h>      // https://github.com/TheDIYGuy999/statusLED <<------- required for LED control
 #include <FastLED.h>        // https://github.com/FastLED/FastLED        <<------- required for Neopixel support. Use V3.3.3
 #include <ESP32AnalogRead.h>// https://github.com/madhephaestus/ESP32AnalogRead <<------- required for battery voltage measurement
-
+#include <AwesomeClickButton.h> //Handle click on a button
 // Additional headers (included)
 #include "src/curves.h"    // Nonlinear throttle curve arrays
-
 #include "soc/rtc_wdt.h"   // for watchdog timer
 
 
@@ -130,18 +123,26 @@ float batteryVolts();
 // both outputs of the resistors above are connected together and then to the outer leg of a
 // 10kOhm potentiometer. The other outer leg connects to GND. The middle leg connects to both inputs
 // of a PAM8403 amplifier and allows to adjust the volume. This way, two speakers can be used.
+// Objects *************************************************************************************
+#ifdef USE_DUAL_HEAD_LIGHT
+statusLED headLight0(true);
+statusLED headLight1(true);
+#else
+statusLED headLight(false);
+#endif
+statusLED tailLight(false);
+// Neopixel LED
+#ifdef USE_RGB_LED
+CRGB rgb1LEDs[RGB_LED1_COUNT];
+CRGB rgb2LEDs[RGB_LED2_COUNT];
+#endif
 
-
-
-
-
-// Neopixel
-CRGB rgbLEDs[NEOPIXEL_COUNT];
+#ifdef USE_FAN_COOLING
+statusLED fan(false);
+#endif
 
 // Battery voltage
 ESP32AnalogRead battery;
-
-
 
 // Global variables **********************************************************************
 
@@ -183,10 +184,9 @@ volatile uint16_t throttleDependentFanVolume = 0;        // cooling fan volume a
 volatile uint16_t throttleDependentChargerVolume = 0;    // cooling fan volume according to rpm
 volatile uint16_t rpmDependentWastegateVolume = 0;       // wastegate volume according to rpm
 
-volatile uint16_t trackRattleVolume = 0; 
+volatile uint16_t trackRattleVolume = 0;                  // track rattling volume
 
 volatile uint64_t dacDebug = 0;                           // DAC debug variable TODO
-
 volatile int16_t masterVolume = 100;                     // Master volume percentage
 volatile uint8_t dacOffset = 0;  // 128, but needs to be ramped up slowly to prevent popping noise, if switched on
 
@@ -207,6 +207,7 @@ enum EngineState                                         // Engine state enum
   STOPPING,
   PARKING_BRAKE
 };
+
 int16_t engineLoad = 0;                                  // 0 - 500
 volatile uint16_t engineSampleRate = 0;                  // Engine sample rate
 int32_t speedLimit = maxRpm;                             // The speed limit, depending on selected virtual gear
@@ -239,15 +240,6 @@ uint16_t currentSpeed = 0;                               // 0 - 500 (current ESC
 volatile bool crawlerMode = false;                       // Crawler mode intended for crawling competitons (withouth sound and virtual inertia)
 
 // Lights
-int8_t lightsState = 0;                                  // for lights state machine
-volatile boolean lightsOn = false;                       // Lights on
-volatile boolean headLightsFlasherOn = false;            // Headlights flasher impulse (Lichthupe)
-volatile boolean headLightsHighBeamOn = false;           // Headlights high beam (Fernlicht)
-volatile boolean blueLightTrigger = false;               // Bluelight on (Blaulicht)
-boolean indicatorLon = false;                            // Left indicator (Blinker links)
-boolean indicatorRon = false;                            // Right indicator (Blinker rechts)
-boolean fogLightOn = false;                              // Fog light is on
-boolean cannonFlash = false;                             // Flashing cannon fire
 
 
 // Battery
@@ -256,6 +248,20 @@ float batteryVoltage;
 uint8_t numberOfCells;
 bool batteryProtection = false;
 
+// VESC var
+const int16_t maxDuty = 95; // 65% as max duty
+const int16_t minDuty = 1;  //  0%
+const int16_t maxErpm = 4000;
+const int16_t minErpm = 100;
+const uint32_t engineOffDelay = 5000; // engine off delay
+unsigned long vescReadDelay=10; //10ms read once 
+volatile unsigned long timelast;
+unsigned long timelastloop;
+
+//// Initiate VescUart class
+VescUart VESC;
+//// push button switch trigger houn sound on esp32 pin 0
+AwesomeClickButton soundButton(PUSH_BUTTON_PIN);
 
 // DEBUG stuff
 volatile uint8_t coreId = 99;
@@ -283,7 +289,7 @@ volatile uint32_t fixedTimerTicks = maxSampleInterval;
 // Declare a mutex Semaphore Handles.
 // It will be used to ensure only only one Task is accessing this resource at any time.
 SemaphoreHandle_t xPwmSemaphore;
-SemaphoreHandle_t xRpmSemaphore;
+SemaphoreHandle_t xVescSemaphore;
 
 // These are used to print the reset reason on startup
 const char *RESET_REASONS[] = {"POWERON_RESET", "NO_REASON", "SW_RESET", "OWDT_RESET", "DEEPSLEEP_RESET", "SDIO_RESET", "TG0WDT_SYS_RESET", "TG1WDT_SYS_RESET", "RTCWDT_SYS_RESET", "INTRUSION_RESET", "TGWDT_CPU_RESET", "SW_CPU_RESET", "RTCWDT_CPU_RESET", "EXT_CPU_RESET", "RTCWDT_BROWN_OUT_RESET", "RTCWDT_RTC_RESET"};
@@ -336,11 +342,9 @@ void IRAM_ATTR variablePlaybackTimer() {
       timerAlarmWrite(variableTimer, variableTimerTicks, true); // // change timer ticks, autoreload true
 
       if (curStartSample < startSampleCount - 1) {
-#if defined STEAM_LOCOMOTIVE_MODE
-        a = (startSamples[curStartSample] * startVolumePercentage / 100);
-#else
+
         a = (startSamples[curStartSample] * throttleDependentVolume / 100 * startVolumePercentage / 100);
-#endif
+
         curStartSample ++;
       }
       else {
@@ -455,17 +459,6 @@ void IRAM_ATTR variablePlaybackTimer() {
         curChargerSample = 0;
       }
 
-#if defined STEAM_LOCOMOTIVE_MODE
-      // Track rattle sound -----------------------
-      if (curTrackRattleSample < trackRattleSampleCount - 1) {
-        g = (trackRattleSamples[curTrackRattleSample] * trackRattleVolumePercentage / 100 * trackRattleVolume / 100);
-        curTrackRattleSample ++;
-      }
-      else {
-        curTrackRattleSample = 0;
-      }
-#endif
-
       if (!engineOn) {
         speedPercentage = 100;
         attenuator = 1;
@@ -544,7 +537,7 @@ void IRAM_ATTR fixedPlaybackTimer() {
   static uint32_t curTrackRattleSample = 0;                    // Index of currently loaded track rattle sample
   static uint32_t curOutOfFuelSample = 0;                      // Index of currently loaded out of fuel sample
   static int32_t a, a1, a2 = 0;                                // Input signals "a" for mixer
-  static int32_t b, b0, b1, b2, b3, b4, b5, b6, b7, b8, b9 = 0;// Input signals "b" for mixer
+  static int32_t b, b0, b1, b2, b3, b4, b5, b6, b7, b9 = 0;// Input signals "b" for mixer
   static int32_t c, c1, c2, c3 = 0;                            // Input signals "c" for mixer
   static int32_t d, d1, d2 = 0;                                // Input signals "d" for mixer
   static boolean knockSilent = 0;                              // This knock will be more silent
@@ -1128,10 +1121,6 @@ void engineMassSimulation() {
 #if defined VIRTUAL_3_SPEED || defined VIRTUAL_16_SPEED_SEQUENTIAL // Virtual 3 speed or sequential 16 speed transmission
         targetRpm = reMap(curveLinear, (currentSpeed * virtualManualGearRatio[selectedGear] / 10)); // Add virtual gear ratios
         if (targetRpm > 500) targetRpm = 500;
-
-#elif defined STEAM_LOCOMOTIVE_MODE
-        targetRpm = currentSpeed;
-
 #else // Real 3 speed transmission           
         targetRpm = reMap(curveLinear, currentSpeed);
 #endif
@@ -1160,7 +1149,7 @@ void engineMassSimulation() {
       if (_currentRpm < minRpm) _currentRpm = minRpm;
     }
 
-#if (defined VIRTUAL_3_SPEED || defined VIRTUAL_16_SPEED_SEQUENTIAL) and not defined STEAM_LOCOMOTIVE_MODE
+#if (defined VIRTUAL_3_SPEED || defined VIRTUAL_16_SPEED_SEQUENTIAL) 
     // Limit top speed, depending on manual gear ratio. Ensures, that the engine will not blow up!
     if (!automatic && !doubleClutch) speedLimit = maxRpm * 10 / virtualManualGearRatio[selectedGear];
 #endif
@@ -1247,12 +1236,6 @@ void gearboxDetection() {
   static unsigned long upShiftingMillis;
   static unsigned long downShiftingMillis;
   static unsigned long lastShiftingMillis; // This timer is used to prevent transmission from oscillating!
-
-#if defined TRACKED_MODE or defined STEAM_LOCOMOTIVE_MODE// CH2 is used for left throttle in TRACKED_MODE --------------------------------
-  selectedGear = 2;
-
-#else // only active, if not in TRACKED_MODE -------------------------------------------------------------
-
 #if defined OVERDRIVE && defined VIRTUAL_3_SPEED // Additional 4th gear mode for virtual 3 speed ********************************
   if (!crawlerMode) {
     // The 4th gear (overdrive) is engaged automatically, if driving @ full throttle in 3rd gear
@@ -1366,8 +1349,6 @@ void gearboxDetection() {
     Serial.printf("---------------------------------\n");
   }
 #endif // MANUAL_TRANS_DEBUG
-
-#endif // End of not TRACKED_MODE -----------------------------------------------------------------------
 }
 
 //
@@ -1499,9 +1480,6 @@ void esc() { // ESC main function ================================
 
 #elif defined VIRTUAL_16_SPEED_SEQUENTIAL
   escRampTime = escRampTimeThirdGear * virtualManualGearRatio[selectedGear] / 5;
-
-#elif defined STEAM_LOCOMOTIVE_MODE
-  escRampTime = escRampTimeSecondGear;
 
 #else // TAMIYA 3 speed shifting transmission
   if (selectedGear == 1) escRampTime = escRampTimeFirstGear; // about 20
