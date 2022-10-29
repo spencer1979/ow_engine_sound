@@ -11,7 +11,7 @@
 #ifndef OW_CONTROL_CONFIG_H_
 #define OW_CONTROL_CONFIG_H_
 #include <Arduino.h>
-#define DUTY_TO_THROTTLE // you want to vesc dutycycle as throttle else use abd ermp as throttle 
+//#define DUTY_TO_THROTTLE // you want to vesc dutycycle as throttle else use abd ermp as throttle 
 #define ESP32_DEBUG // DEBUG ESP32 
 #define USE_DUAL_HEAD_LIGHT // USE dual led  for headlight
 #define USE_RGB_LED         // use ws2812 RGB led

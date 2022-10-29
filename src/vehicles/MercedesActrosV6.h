@@ -6,8 +6,8 @@ volatile int startVolumePercentage = 160; // Adjust the start volume (usually = 
 #include "sounds/ActrosV6Start.h" // Actros V6
 
 // Choose the motor idle sound (uncomment the one you want) --------
-volatile int idleVolumePercentage = 100; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
-volatile int engineIdleVolumePercentage = 50; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
+volatile int idleVolumePercentage = 120; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
+volatile int engineIdleVolumePercentage = 70; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
 volatile int fullThrottleVolumePercentage = 140; // Volume Percentage while full throttle (for rev sound as well)
 //#include "sounds/ActrosV6Idle.h" // Actros V6
 #include "sounds/ActrosV6Idle2.h" // Actros V6 (more bass)
@@ -75,10 +75,10 @@ volatile int fanStartPoint = 0; // Volume will raise above this point (250 for T
 #include "sounds/GenericFan.h" // Generic engine cooling fan
 
 // Choose the horn sound (uncomment the one you want) --------
-volatile int hornVolumePercentage = 100; // Adjust the horn volume (usually = 100%)
+volatile int hornVolumePercentage = 110; // Adjust the horn volume (usually = 100%)
 //#include "sounds/TrainHorn.h" // American train horn
 //#include "sounds/HornblastersOUTLAWTrainHornShort.h" // Hornblasters outlaw train horn short
-#include "sounds/ManTgeHorn.h" // MAN TGE truck horn (King Hauler)
+//#include "sounds/ManTgeHorn.h" // MAN TGE truck horn (King Hauler)
 //#include "sounds/westinghouseHorn.h" // American truck horn (the best)
 //#include "sounds/FireTruckAirHorn.h" // US fire truck air horn
 //#include "sounds/CarHorn.h" // A boring car horn
@@ -87,7 +87,7 @@ volatile int hornVolumePercentage = 100; // Adjust the horn volume (usually = 10
 //#include "sounds/2ToneTruckHorn.h" // A 2 tone truck horn
 //#include "sounds/CaboverCAThorn.h" // Cabover wit CAT engine horn
 //#include "sounds/ScaniaV8trainHorn.h" // Scania with train horn
-
+#include "sounds/halloween.h"
 // Choose the siren / additional horn sound (uncomment the one you want) --------
 volatile int sirenVolumePercentage = 100; // Adjust the siren volume (usually = 100%)
 //#include "sounds/sirenDummy.h" // If you don't want siren sound
@@ -134,8 +134,8 @@ volatile int sound1VolumePercentage = 100; // Adjust the sound1 volume (usually 
 //#include "sounds/007JamesBond.h" // James Bond melody
 //#include "sounds/M2Fire.h" // M2 salve
 //#include "sounds/GlenCanyon.h" // Glen Canyon country song for truckers ;-)
-#include "sounds/door.h" // opening and closing the door
-
+//#include "sounds/door.h" // opening and closing the door
+#include "sounds/wellcome.h"
 // Choose the reversing beep sound --------
 volatile int reversingVolumePercentage = 50; // Adjust the reversing sound volume (usually = 70%)
 #include "sounds/TruckReversingBeep.h" // 1000Hz peep sound
@@ -176,7 +176,7 @@ const uint8_t escAccelerationSteps = 3; // determines, how fast the ESC is able 
 
 // Gearbox parameters (select number of automatic gears in curves.h)-----------------------------------------------------
 const boolean automatic = true; // false = linear rpm curve, true = automatic transmission with torque converter is simulated (use it, if you don't have a real shifting transmission)
-#define NumberOfAutomaticGears 6 // <<------- Select 3, 4 or 6 gears!
+#define NumberOfAutomaticGears 3 // <<------- Select 3, 4 or 6 gears!
 const boolean doubleClutch = false; // do not activate it at the same time as automatic!
 const boolean shiftingAutoThrottle = true; // For Tamiya 3 speed tansmission, throttle is altered for synchronizing, if "true"
 

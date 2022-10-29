@@ -198,7 +198,7 @@ const int16_t maxDuty = 95; // 65% as max duty
 const int16_t minDuty = 1;  //  0%
 const int16_t maxErpm = 4000;
 const int16_t minErpm = 100;
-const uint32_t engineOffDelay = 5000; // engine off delay
+const uint32_t engineOffDelay = 2000; // engine off delay
 unsigned long vescReadDelay;
 volatile unsigned long timelast;
 unsigned long timelastloop;
@@ -472,7 +472,7 @@ void IRAM_ATTR variablePlaybackTimer()
       engineState = PARKING_BRAKE;
       engineStop = false;
     }
-    
+
     break;
 
   case PARKING_BRAKE: // parking brake bleeding air sound after engine is off ----------------------------
@@ -952,6 +952,9 @@ void setup()
   headLight.begin(LED1_PIN, 1, 20000); // Timer 1, 20kHz
 #endif
   tailLight.begin(LED3_PIN, 2, 20000); // Timer 2, 20kHz
+                                       // wait for RC receiver to initialize
+  while (millis() <= 4000)
+    ;
   // setup onewheel
   ow_setup();
   // Neopixel setup
@@ -990,10 +993,6 @@ void setup()
   timerAttachInterrupt(fixedTimer, &fixedPlaybackTimer, true); // edge (not level) triggered
   timerAlarmWrite(fixedTimer, fixedTimerTicks, true);          // autoreload true
   timerAlarmEnable(fixedTimer);                                // enable
-
-  // wait for RC receiver to initialize
-  while (millis() <= 1000)
-    ;
 }
 
 //
@@ -1018,6 +1017,32 @@ void dacOffsetFade()
     }
   }
 }
+
+static int16_t get_vesc_throttle()
+{
+  uint32_t max, min, throttle;
+  int16_t val;
+#ifdef DUTY_TO_THROTTLE
+  throttle = (uint32_t)fabsf(VESC.appData.dutyCycle) * 100;
+  max = maxDuty;
+  min = minDuty;
+  if (throttle > max)
+    throttle = max;
+  if (throttle < min)
+    throttle = min;
+
+#else
+  throttle = fabsf(VESC.appData.erpm);
+  max = maxErpm;
+  min = minErpm;
+  if (throttle > max)
+    throttle = max;
+  if (throttle < min)
+    throttle = min;
+
+#endif
+  return (int16_t)map((uint32_t)throttle, min, max, minRpm, maxRpm);
+}
 //
 // =======================================================================================================
 // MAP VESC Duty TO THROTTLE
@@ -1029,28 +1054,7 @@ void mapThrottle()
   // TODO :Map vesc Duty to throttle or erpm
   // currentThrottle = map(pulseWidth[3], pulseMinNeutral[3], pulseMin[3], 0, 500);
 
-  static float throttle = 0;
-  int max, min;
-
-#ifdef DUTY_TO_THROTTLE
-  throttle = fabsf(VESC.appData.pitch);
-  max = 90;
-  min = 1;
-
-#else
-  throttle = fabsf(VESC.appData.erpm);
-  max = maxErpm;
-  min = minErpm;
-#endif
-
-  if (throttle > min)
-  {
-    currentThrottle = map((uint16_t)throttle, min, max, 0, 500);
-  }
-  else
-  {
-    currentThrottle = 0;
-  }
+  currentThrottle = get_vesc_throttle();
 
 #ifdef DEBUG_THROTTLE
   Serial.print("throttle:");
@@ -1446,6 +1450,15 @@ unsigned long loopDuration()
 
 void triggerHorn()
 {
+  if (VESC.appData.kill_sw_mode > 0 && engineOn)
+  {
+    hornTrigger = true;
+    hornLatch = true;
+  }
+  else
+  {
+    hornTrigger = false;
+  }
 }
 //
 //===================================================== ===================================================== ===
@@ -1454,7 +1467,7 @@ void triggerHorn()
 //
 void ow_setup()
 {
-#define VESC_DEBUG
+  //#define VESC_DEBUG
   // set pin mode
   pinMode(CSR_EN_PIN, OUTPUT);
   pinMode(AUDIO_SOURCE_PIN, OUTPUT);
@@ -1475,7 +1488,7 @@ void ow_setup()
   AUDIO_SOURCE_ESP();
   AUDIO_UNMUTE();
   engineOn = false;
-  sound1trigger=true;
+  sound1trigger = true;
 }
 
 //
@@ -1487,7 +1500,7 @@ void ow_setup()
 bool get_vesc_values(uint32_t loop_time)
 
 {
-  bool is_read = false;
+  static bool is_read = false;
   static uint32_t lastReadTime = millis();
 
   if (millis() - lastReadTime > loop_time)
@@ -1495,7 +1508,7 @@ bool get_vesc_values(uint32_t loop_time)
 
     is_read = VESC.getCustomValues();
 
-    lastReadTime = micros();
+    lastReadTime = millis();
   }
 
 #ifdef VESC_DEBUG
@@ -1735,25 +1748,7 @@ void vesc()
 
     // Calculate a speed value from the pulsewidth signal (used as base for engine sound RPM while clutch is engaged)
 
-#ifdef DUTY_TO_THROTTLE
-    speed = fabsf(VESC.appData.pitch);
-    max = 90;
-    min = 1;
-#else
-
-    speed = fabsf(VESC.appData.erpm);
-    max = maxErpm;
-    min = minErpm;
-#endif
-
-    if (speed > min)
-    {
-      currentSpeed = map((uint16_t)speed, min, max, 0, 500);
-    }
-    else
-    {
-      currentSpeed = 0;
-    }
+    currentSpeed = get_vesc_throttle();
   }
 #endif
 }
@@ -1768,33 +1763,31 @@ void loop()
 {
   // TODO: vesc get data from here
 
-  //
   if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
   {
-    if (get_vesc_values(100))
+    if (get_vesc_values(20))
     {
       static unsigned long engineOffTimer = millis();
-      if (VESC.appData.switchState < 2)
+      if (VESC.appData.switchState == SWITCH_ON)
       {
-        if (millis() - engineOffTimer > engineOffDelay)
-        {
-          engineOn = false;
-
-        }
-      }
-      else
-      {
-      
         engineOn = true;
         AUDIO_UNMUTE();
         engineOffTimer = millis();
       }
-    }
-    else
+      else
+      {
+        if (millis() - engineOffTimer > engineOffDelay)
+        {
+          engineOn = false;
+          
+        }
+         if ( engineState == OFF && !sound1trigger && !hornTrigger && !engineOn )
+            AUDIO_MUTE();
+           
+        
+      }
 
-    {
-      engineOn = false;
-     
+      
     }
     xSemaphoreGive(xVescSemaphore); // Now free or "Give" the semaphore for others.
   }
