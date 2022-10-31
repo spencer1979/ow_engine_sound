@@ -88,21 +88,13 @@ typedef enum
   SWITCH_ON
 } SwitchState;
 
-struct vesc_data
+//audio source
+//using VESC controll id to get source 
+typedef enum
 { 
-  volatile float pidOutput;
-  volatile float pitch;
-  volatile float roll;
-  volatile uint32_t loopTime;
-  volatile float motorCurrent;
-  // float debug1; // unwant skip it
-  volatile uint16_t state;
-  volatile SwitchState switchState;
-  volatile uint16_t killSwMode;
-  volatile float dutyCycle;
-  volatile float erpm;
-  volatile float inputVoltage;
+  SOURCE_CSR,
+  SOURCE_ESP32,
+} AudioSource;
 
-};
 
 #endif

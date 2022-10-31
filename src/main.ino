@@ -156,6 +156,8 @@ enum EngineState // Engine state enum
   PARKING_BRAKE
 };
 
+
+
 int16_t engineLoad = 0;                 // 0 - 500
 volatile uint16_t engineSampleRate = 0; // Engine sample rate
 int32_t speedLimit = maxRpm;            // The speed limit, depending on selected virtual gear
@@ -202,6 +204,9 @@ const uint32_t engineOffDelay = 2000; // engine off delay
 unsigned long vescReadDelay;
 volatile unsigned long timelast;
 unsigned long timelastloop;
+//audio source 
+volatile AudioSource audioSource;
+
 //// Initiate VescUart class
 VescUart VESC;
 //// push button switch trigger houn sound on esp32 pin 0
@@ -924,7 +929,17 @@ void IRAM_ATTR fixedPlaybackTimer()
 
 void setup()
 {
-
+  // set pin mode
+  pinMode(CSR_EN_PIN, OUTPUT);
+  pinMode(AUDIO_SOURCE_PIN, OUTPUT);
+  pinMode(PAM_MUTE_PIN, OUTPUT);
+  // csr8645 off
+  CSR_POWER_OFF();
+  // sound source for welcome sound
+  AUDIO_SOURCE_ESP();
+  // welcome sound trigger
+  AUDIO_UNMUTE();
+  sound1trigger = true;
   // Watchdog timers need to be disabled, if task 1 is running without delay(1)
   disableCore0WDT();
   // disableCore1WDT();
@@ -945,54 +960,51 @@ void setup()
       xSemaphoreGive((xVescSemaphore)); // Make the PWM variable available for use, by "Giving" the Semaphore.
   }
 
-#ifdef USE_DUAL_HEAD_LIGHT
-  headLight0.begin(LED1_PIN, 1, 20000); // Timer 1, 20kHz
-  headLight1.begin(LED2_PIN, 1, 20000); // Timer 1, 20kHz
-#else
-  headLight.begin(LED1_PIN, 1, 20000); // Timer 1, 20kHz
-#endif
-  tailLight.begin(LED3_PIN, 2, 20000); // Timer 2, 20kHz
-                                       // wait for RC receiver to initialize
-  while (millis() <= 4000)
-    ;
-  // setup onewheel
-  ow_setup();
-  // Neopixel setup
-  FastLED.addLeds<NEOPIXEL, RGB_LED1_DATA_PIN>(rgb1LEDs, RGB_LED1_COUNT);
-  FastLED.addLeds<NEOPIXEL, RGB_LED2_DATA_PIN>(rgb2LEDs, RGB_LED2_COUNT);
-  // Serial setup
-  Serial.begin(115200); // USB serial (for DEBUG)
 
-  // Refresh sample intervals (important, because MAX_RPM_PERCENTAGE was probably changed above)
-  maxSampleInterval = 4000000 / sampleRate;
-  minSampleInterval = 4000000 / sampleRate * 100 / MAX_RPM_PERCENTAGE;
-  // Time
-  timelast = micros();
-  timelastloop = timelast;
 
-  // Task 1 setup (running on core 0)
-  TaskHandle_t Task1;
-  // create a task that will be executed in the Task1code() function, with priority 1 and executed on core 0
-  xTaskCreatePinnedToCore(
-      Task1code, /* Task function. */
-      "Task1",   /* name of task. */
-      100000,    /* Stack size of task (10000) */
-      NULL,      /* parameter of the task */
-      1,         /* priority of the task (1 = low, 3 = medium, 5 = highest)*/
-      &Task1,    /* Task handle to keep track of created task */
-      0);        /* pin task to core 0 */
 
-  // Interrupt timer for variable sample rate playback
-  variableTimer = timerBegin(0, 20, true);                           // timer 0, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 20 -> 250 ns = 0.25 us, countUp
-  timerAttachInterrupt(variableTimer, &variablePlaybackTimer, true); // edge (not level) triggered
-  timerAlarmWrite(variableTimer, variableTimerTicks, true);          // autoreload true
-  timerAlarmEnable(variableTimer);                                   // enable
+// Refresh sample intervals (important, because MAX_RPM_PERCENTAGE was probably changed above)
+maxSampleInterval = 4000000 / sampleRate;
+minSampleInterval = 4000000 / sampleRate * 100 / MAX_RPM_PERCENTAGE;
+// Time
+timelast = micros();
+timelastloop = timelast;
+// Serial setup
+Serial.begin(115200); // USB serial (for DEBUG)
 
-  // Interrupt timer for fixed sample rate playback
-  fixedTimer = timerBegin(1, 20, true);                        // timer 1, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 20 -> 250 ns = 0.25 us, countUp
-  timerAttachInterrupt(fixedTimer, &fixedPlaybackTimer, true); // edge (not level) triggered
-  timerAlarmWrite(fixedTimer, fixedTimerTicks, true);          // autoreload true
-  timerAlarmEnable(fixedTimer);                                // enable
+while (!Serial)
+{
+  ;
+}
+
+// Task 1 setup (running on core 0)
+TaskHandle_t Task1;
+// create a task that will be executed in the Task1code() function, with priority 1 and executed on core 0
+xTaskCreatePinnedToCore(
+    Task1code, /* Task function. */
+    "Task1",   /* name of task. */
+    100000,    /* Stack size of task (10000) */
+    NULL,      /* parameter of the task */
+    1,         /* priority of the task (1 = low, 3 = medium, 5 = highest)*/
+    &Task1,    /* Task handle to keep track of created task */
+    0);        /* pin task to core 0 */
+
+// Interrupt timer for variable sample rate playback
+variableTimer = timerBegin(0, 20, true);                           // timer 0, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 20 -> 250 ns = 0.25 us, countUp
+timerAttachInterrupt(variableTimer, &variablePlaybackTimer, true); // edge (not level) triggered
+timerAlarmWrite(variableTimer, variableTimerTicks, true);          // autoreload true
+timerAlarmEnable(variableTimer);                                   // enable
+
+// Interrupt timer for fixed sample rate playback
+fixedTimer = timerBegin(1, 20, true);                        // timer 1, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 20 -> 250 ns = 0.25 us, countUp
+timerAttachInterrupt(fixedTimer, &fixedPlaybackTimer, true); // edge (not level) triggered
+timerAlarmWrite(fixedTimer, fixedTimerTicks, true);          // autoreload true
+timerAlarmEnable(fixedTimer);                                // enable
+
+while ( sound1trigger ){;}
+// setup for wheel
+ow_setup();
+engineOn=false;
 }
 
 //
@@ -1450,15 +1462,7 @@ unsigned long loopDuration()
 
 void triggerHorn()
 {
-  if (VESC.appData.kill_sw_mode > 0 && engineOn)
-  {
-    hornTrigger = true;
-    hornLatch = true;
-  }
-  else
-  {
-    hornTrigger = false;
-  }
+
 }
 //
 //===================================================== ===================================================== ===
@@ -1468,29 +1472,71 @@ void triggerHorn()
 void ow_setup()
 {
   //#define VESC_DEBUG
-  // set pin mode
-  pinMode(CSR_EN_PIN, OUTPUT);
-  pinMode(AUDIO_SOURCE_PIN, OUTPUT);
-  pinMode(PAM_MUTE_PIN, OUTPUT);
-  // audio mute
-  AUDIO_MUTE();
-  // csr8645 off
-  CSR_POWER_OFF();
-  // Serial port for debug
-  Serial.begin(115200);
+  // Neopixel setup
+  FastLED.addLeds<NEOPIXEL, RGB_LED1_DATA_PIN>(rgb1LEDs, RGB_LED1_COUNT);
+  FastLED.addLeds<NEOPIXEL, RGB_LED2_DATA_PIN>(rgb2LEDs, RGB_LED2_COUNT);
+#ifdef USE_DUAL_HEAD_LIGHT
+  headLight0.begin(LED1_PIN, 1, 20000); // Timer 1, 20kHz
+  headLight1.begin(LED2_PIN, 1, 20000); // Timer 1, 20kHz
+#else
+  headLight.begin(LED1_PIN, 1, 20000); // Timer 1, 20kHz
+#endif
+  tailLight.begin(LED3_PIN, 2, 20000); // Timer 2, 20kHz
+                                       // wait for RC receiver to initializ
+                                  
   // VESC serial
   Serial2.begin(115200, SERIAL_8N1, ESP_VESC_TX_PIN, ESP_VESC_RX_PIN);
+  while (!Serial2)
+  {
+    ;
+  }
 #ifdef VESC_DEBUG
   VESC.setDebugPort(&Serial);
 #endif
   VESC.setSerialPort(&Serial2);
 
-  AUDIO_SOURCE_ESP();
-  AUDIO_UNMUTE();
-  engineOn = false;
-  sound1trigger = true;
+  vTaskDelay(500 / portTICK_PERIOD_MS);
+
+  get_vesc_values(0);
+
+  // wait serial init ..
+  if (VESC.appData.vescId == 0)
+  {
+    AUDIO_MUTE();
+    CSR_POWER_ON();
+    AUDIO_SOURCE_CSR()
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+    AUDIO_UNMUTE();
+    audioSource=SOURCE_CSR;
+  }
+  else if (VESC.appData.vescId > 0)
+  { 
+    AUDIO_MUTE();
+    CSR_POWER_OFF();
+    AUDIO_SOURCE_ESP()
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+    AUDIO_UNMUTE();
+    audioSource=SOURCE_ESP32;
+  }
+  
+
 }
 
+//Check source from VESC controller id 
+AudioSource get_audio_source()
+{ // update vesc data
+
+  if (get_vesc_values(0))
+
+  {
+    return (AudioSource) VESC.appData.vescId;
+  
+  } else 
+  {
+    return SOURCE_CSR;
+  }
+  
+}
 //
 // =======================================================================================================
 // Get the vesc main data
@@ -1500,22 +1546,26 @@ void ow_setup()
 bool get_vesc_values(uint32_t loop_time)
 
 {
-  static bool is_read = false;
   static uint32_t lastReadTime = millis();
-
-  if (millis() - lastReadTime > loop_time)
+  if (loop_time > 0)
   {
+    if (millis() - lastReadTime > loop_time)
+    {
+      return VESC.getCustomValues();
 
-    is_read = VESC.getCustomValues();
-
-    lastReadTime = millis();
+      lastReadTime = millis();
+    }
+  }
+  else
+  {
+    return VESC.getCustomValues();
   }
 
 #ifdef VESC_DEBUG
   VESC.printCustomValues();
 #endif // DEBUG
 
-  return is_read;
+
 }
 
 //
@@ -1752,7 +1802,18 @@ void vesc()
   }
 #endif
 }
-
+void check_mute()
+{ 
+  static bool unmute;
+  unmute=((engineState > 0 )|| sirenTrigger || dieselKnockTrigger || airBrakeTrigger ||parkingBrakeTrigger ||shiftingTrigger || hornTrigger || sirenTrigger || sound1trigger|| couplingTrigger || uncouplingTrigger ||bucketRattleTrigger|| indicatorSoundOn);
+  if ( unmute )
+  {
+     AUDIO_UNMUTE();
+  } else 
+  {
+ AUDIO_MUTE();
+  }
+}
 //
 // =======================================================================================================
 // MAIN LOOP, RUNNING ON CORE 1
@@ -1762,8 +1823,9 @@ void vesc()
 void loop()
 {
   // TODO: vesc get data from here
-
-  if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
+if (audioSource != SOURCE_CSR )
+{
+ if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
   {
     if (get_vesc_values(20))
     {
@@ -1781,9 +1843,6 @@ void loop()
           engineOn = false;
           
         }
-         if ( engineState == OFF && !sound1trigger && !hornTrigger && !engineOn )
-            AUDIO_MUTE();
-           
         
       }
 
@@ -1799,6 +1858,8 @@ void loop()
     mapThrottle();
     xSemaphoreGive(xRpmSemaphore); // Now free or "Give" the semaphore for others.
   }
+}
+ 
 
   // Horn triggering
   triggerHorn();
@@ -1807,6 +1868,7 @@ void loop()
 
   // Feeding the RTC watchtog timer is essential!
 }
+
 
 //
 // =======================================================================================================
@@ -1818,11 +1880,12 @@ void Task1code(void *pvParameters)
 {
   for (;;)
   {
-
+   
     // DAC offset fader
     dacOffsetFade();
     if (xSemaphoreTake(xRpmSemaphore, portMAX_DELAY))
     {
+       
       // Simulate engine mass, generate RPM signal
       engineMassSimulation();
 
@@ -1832,7 +1895,7 @@ void Task1code(void *pvParameters)
 
       xSemaphoreGive(xRpmSemaphore); // Now free or "Give" the semaphore for others.
     }
-
+   
     // Gearbox detection
     gearboxDetection();
 
@@ -1842,5 +1905,9 @@ void Task1code(void *pvParameters)
     vesc();
     // measure loop time
     // loopTime = loopDuration(); // for debug only
+    check_mute();
   }
+
+
+  
 }

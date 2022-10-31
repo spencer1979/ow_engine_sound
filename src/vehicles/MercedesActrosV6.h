@@ -7,8 +7,8 @@ volatile int startVolumePercentage = 160; // Adjust the start volume (usually = 
 
 // Choose the motor idle sound (uncomment the one you want) --------
 volatile int idleVolumePercentage = 120; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
-volatile int engineIdleVolumePercentage = 70; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
-volatile int fullThrottleVolumePercentage = 140; // Volume Percentage while full throttle (for rev sound as well)
+volatile int engineIdleVolumePercentage = 90; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
+volatile int fullThrottleVolumePercentage = 160; // Volume Percentage while full throttle (for rev sound as well)
 //#include "sounds/ActrosV6Idle.h" // Actros V6
 #include "sounds/ActrosV6Idle2.h" // Actros V6 (more bass)
 
@@ -135,7 +135,7 @@ volatile int sound1VolumePercentage = 100; // Adjust the sound1 volume (usually 
 //#include "sounds/M2Fire.h" // M2 salve
 //#include "sounds/GlenCanyon.h" // Glen Canyon country song for truckers ;-)
 //#include "sounds/door.h" // opening and closing the door
-#include "sounds/wellcome.h"
+#include "sounds/welcome.h"
 // Choose the reversing beep sound --------
 volatile int reversingVolumePercentage = 50; // Adjust the reversing sound volume (usually = 70%)
 #include "sounds/TruckReversingBeep.h" // 1000Hz peep sound

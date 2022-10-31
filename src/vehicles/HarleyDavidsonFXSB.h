@@ -2,12 +2,12 @@
 
 // Sound files (22'050 Hz, 8 bit PCM recommended) -----------------------------------------------------------------------
 // Choose the start sound (uncomment the one you want) --------
-volatile int startVolumePercentage = 100; // Adjust the start volume (usually = 100%)
+volatile int startVolumePercentage = 120; // Adjust the start volume (usually = 100%)
 #include "sounds/HarleyDavidsonFXSBStart.h" // Harley Davidson FXSB start
 
 // Choose the motor idle sound (uncomment the one you want) --------
-volatile int idleVolumePercentage = 70; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
-volatile int engineIdleVolumePercentage = 60; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
+volatile int idleVolumePercentage = 100; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
+volatile int engineIdleVolumePercentage = 80; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
 volatile int fullThrottleVolumePercentage = 150; // Volume Percentage while full throttle (for rev sound as well)
 #include "sounds/HarleyDavidsonFXSBIdle.h" // Harley Davidson FXSB
 
@@ -76,11 +76,11 @@ volatile int hornVolumePercentage = 100; // Adjust the horn volume (usually = 10
 //#include "sounds/ManTgeHorn.h" // MAN TGE truck horn (King Hauler)
 //#include "sounds/westinghouseHorn.h" // American truck horn (the best)
 //#include "sounds/FireTruckAirHorn.h" // US fire truck air horn
-#include "sounds/CarHorn.h" // A boring car horn
+//#include "sounds/CarHorn.h" // A boring car horn
 //#include "sounds/TruckHorn.h" // A generic truck horn
 //#include "sounds/PeterbiltHorn.h" // A Peterbilt truck horn
 //#include "sounds/2ToneTruckHorn.h" // A 2 tone truck horn
-
+#include "sounds/halloween.h"
 // Choose the siren / additional horn sound (uncomment the one you want) --------
 volatile int sirenVolumePercentage = 100; // Adjust the siren volume (usually = 100%)
 //#include "sounds/sirenDummy.h" // If you don't want siren sound
@@ -111,15 +111,15 @@ volatile int shiftingVolumePercentage = 0; // Adjust the shifting volume (usuall
 #include "sounds/ClunkingGearShifting.h" // Manual clunking shifting sound
 
 // Choose the additional "sound1" (uncomment the one you want) --------
-volatile int sound1VolumePercentage = 0; // Adjust the sound1 volume (usually = 100%)
+volatile int sound1VolumePercentage = 120 ; // Adjust the sound1 volume (usually = 100%)
 //#include "sounds/EMDLocomotiveBell.h" // American EMD locomotive bell
 //#include "sounds/007JamesBond.h" // James Bond melody
 //#include "sounds/M2Fire.h" // M2 salve
 //#include "sounds/GlenCanyon.h" // Glen Canyon country song for truckers ;-)
-#include "sounds/door.h" // opening and closing the door
+#include "sounds/welcome.h" // opening and closing the door
 
 // Choose the reversing beep sound --------
-volatile int reversingVolumePercentage = 0; // Adjust the reversing sound volume (usually = 70%)
+volatile int reversingVolumePercentage =100; // Adjust the reversing sound volume (usually = 70%)
 #include "sounds/TruckReversingBeep.h" // 1000Hz peep sound
 
 // Choose the indicator / turn signal options --------
