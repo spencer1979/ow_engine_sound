@@ -1,29 +1,24 @@
 #include <Arduino.h>
 
-/* General TRANSMISSION SETTINGS ************************************************************************************************************
- *  
- * Most transmission settings like automatic, double clutch etc. are done in the vehicle configuration files in the /vehicles/ directory.
- * 
- */
-
-// The following transmission modes are ignored in "automatic" or "doubleClutch" vehicles ==================================================
-// Never uncomment more than one! If no option is defined, you can use a real 3 speed transmission, for example from TAMIYA
-
-// #define VIRTUAL_3_SPEED allows to simulate a 3 speed shifing transmission, if your vehicle doesn't have a real one.
-// Gears are virtually shifted, using the 3 position switch. Example: your crawler has a 2 speed transmission, which is used as off road reducer,
-// but no real 3 speed shifting transmission. Don't uncomment if for vehicles with electric or hydrostatic drive or automatic transmissions!
-// Also don't use it for STEAM_LOCOMOTIVE_MODE
+/*一般傳輸設置 ******************************************************************************************************************
+*
+*大多數變速箱設置，如自動、雙離合器等，都在 /vehicles/目錄下的車輛配置文件中完成。
+*
+*/
+//在“自動”或“雙離合器”車輛中忽略以下傳輸模式 =================================== ================
+//永遠不要取消評論超過一個！如果沒有定義選項，您可以使用真正的 3 速傳輸，例如來自 TAMIYA
+//#define VIRTUAL_3_SPEED 允許模擬 3 檔變速箱，如果您的車輛沒有真正的變速箱。
+//使用 3 檔開關，齒輪實際上是換檔的。示例：您的履帶具有 2 速變速器，用作越野減速器，
+//但沒有真正的 3 檔變速箱。如果是電動或靜液壓驅動或自動變速器的車輛，請不要取消註釋！
+//也不要將它用於 STEAM_LOCOMOTIVE_MODE
 //#define VIRTUAL_3_SPEED
-
-//#define VIRTUAL_16_SPEED_SEQUENTIAL will enable a sequencial transmission, shifted by up / down impulses via 3 position switch
-//#define VIRTUAL_16_SPEED_SEQUENTIAL // This is still experimental and not working properly! Don't use it.
-
-// Additional transmission options =========================================================================================================
-// Automatic transmission with overdrive (lower RPM in top gear, gear ratio lower than 1:1, 4 & 6 speed only)
-// Also usable in combination with VIRTUAL_3_SPEED. The 4th gear is switched automatically in this case, if driving in 3rd gear @ full throttle
-#define OVERDRIVE // Don't use it for: doubleClutch. Not working with SEMI_AUTOMATIC, but you can leave it on in this case.
-
-// In some cases we want a different reverse acceleration for automatic transmission vehicles.
+//#define VIRTUAL_16_SPEED_SEQUENTIAL 將啟用順序傳輸，通過 3 位置開關按上/下脈衝移動
+//#define VIRTUAL_16_SPEED_SEQUENTIAL //這仍然是實驗性的，不能正常工作！不要使用它。
+//附加傳輸選項================================================ ==================================================== ========
+//帶超速檔的自動變速器（最高檔時轉速較低，齒輪比低於 1:1，僅限 4 和 6 速）
+//也可與 VIRTUAL_3_SPEED 結合使用。在這種情況下，如果以 3 檔行駛 @ 全油門，則 4 檔會自動切換
+#define OVERDRIVE//不要將其用於：doubleClutch。不使用 SEMI_AUTOMATIC，但在這種情況下您可以將其保持打開狀態。
+//在某些情況下，我們希望自動變速箱車輛具有不同的反向加速。
 uint16_t automaticReverseAccelerationPercentage = 100;
 
 // Low range percentage is used for MODE1_SHIFTING (off road reducer)

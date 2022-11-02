@@ -71,7 +71,7 @@ float batteryVolts();
 //#define SERVO_DEBUG // uncomment it for servo calibration in BUS communication mode
 //#define ESPNOW_DEBUG  // uncomment for additional ESP-NOW messages
 //#define CORE_DEBUG // Don't use this!
-
+#define WEB_SERIAL // web serial debug 
 // TODO = Things to clean up!
 
 //
@@ -90,7 +90,7 @@ float batteryVolts();
 // Additional headers (included)
 #include "src/curves.h"    // Nonlinear throttle curve arrays
 #include "soc/rtc_wdt.h"   // for watchdog timer
-
+#include "src/helper.h" // map fun for any type 
 
 // The following tasks only required for Arduino IDE! ----
 // Install ESP32 board according to: https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
@@ -253,8 +253,12 @@ const int16_t maxDuty = 95; // 65% as max duty
 const int16_t minDuty = 1;  //  0%
 const int16_t maxErpm = 4000;
 const int16_t minErpm = 100;
-const uint32_t engineOffDelay = 5000; // engine off delay
-unsigned long vescReadDelay=10; //10ms read once 
+const uint32_t engineOffDelay = 2000; // engine off delay
+unsigned long vescReadDelay;
+
+//audio source 
+volatile AudioSource audioSource;
+
 volatile unsigned long timelast;
 unsigned long timelastloop;
 
@@ -291,8 +295,29 @@ volatile uint32_t fixedTimerTicks = maxSampleInterval;
 SemaphoreHandle_t xPwmSemaphore;
 SemaphoreHandle_t xVescSemaphore;
 
-// These are used to print the reset reason on startup
-const char *RESET_REASONS[] = {"POWERON_RESET", "NO_REASON", "SW_RESET", "OWDT_RESET", "DEEPSLEEP_RESET", "SDIO_RESET", "TG0WDT_SYS_RESET", "TG1WDT_SYS_RESET", "RTCWDT_SYS_RESET", "INTRUSION_RESET", "TGWDT_CPU_RESET", "SW_CPU_RESET", "RTCWDT_CPU_RESET", "EXT_CPU_RESET", "RTCWDT_BROWN_OUT_RESET", "RTCWDT_RTC_RESET"};
+
+#ifdef WEB_SERIAL
+
+#include <WiFi.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <WebSerial.h>
+AsyncWebServer server(80);
+
+const char *ssid = "ow_debug";     // Your WiFi AP SSID
+const char *password = "00000000"; // Your WiFi Password
+
+/* Message callback of WebSerial */
+void recvMsg(uint8_t *data, size_t len){
+  WebSerial.println("Received Data...");
+  String d = "";
+  for(int i=0; i < len; i++){
+    d += char(data[i]);
+  }
+  WebSerial.println(d);
+}
+
+#endif
 
 //
 // =======================================================================================================
@@ -583,8 +608,6 @@ void IRAM_ATTR fixedPlaybackTimer() {
       sirenLatch = false;
     }
   }
-  if (curSirenSample > 10 && curSirenSample < 500) cannonFlash = true; // Tank cannon flash triggering in TRACKED_MODE
-  else cannonFlash = false;
 
   // Group "b" (other sounds) **********************************************************************
 
@@ -821,44 +844,8 @@ void IRAM_ATTR fixedPlaybackTimer() {
 // =======================================================================================================
 //
 
-void setupBattery() {
-#if defined BATTERY_PROTECTION
-
-  Serial.printf("Battery voltage: %.2f V\n", batteryVolts());
-  Serial.printf("Cutoff voltage per cell: %.2f V\n", CUTOFF_VOLTAGE);
-  Serial.printf("Fully charged voltage per cell: %.2f V\n", FULLY_CHARGED_VOLTAGE);
-
-#define CELL_SETPOINT (CUTOFF_VOLTAGE - ((FULLY_CHARGED_VOLTAGE - CUTOFF_VOLTAGE) /2))
-
-  if (batteryVolts() <= CELL_SETPOINT * 2) numberOfCells = 1;
-  if (batteryVolts() > CELL_SETPOINT * 2) numberOfCells = 2;
-  if (batteryVolts() > CELL_SETPOINT * 3) numberOfCells = 3;
-  if (batteryVolts() > FULLY_CHARGED_VOLTAGE * 3) numberOfCells = 4;
-  batteryCutoffvoltage = CUTOFF_VOLTAGE * numberOfCells; // Calculate cutoff voltage for battery protection
-  if (numberOfCells > 1 && numberOfCells < 4) { // Only 2S & 3S batteries are supported!
-    Serial.printf("Number of cells: %i (%iS battery detected) Based on setpoint: %.2f V\n", numberOfCells, numberOfCells, (CELL_SETPOINT * numberOfCells));
-    Serial.printf("Battery cutoff voltage: %.2f V (%i * %.2f V) \n", batteryCutoffvoltage, numberOfCells, CUTOFF_VOLTAGE);
-    for (uint8_t beeps = 0; beeps < numberOfCells; beeps++) { // Number of beeps = number of cells in series
-      tone(26, 3000, 4, 0);
-      delay(200);
-    }
-  }
-  else {
-    Serial.printf("Error, no valid battery detected! Only 2S & 3S batteries are supported!\n");
-    Serial.printf("REMOVE BATTERY, CONTROLLER IS LOCKED!\n");
-    bool locked = true;
-    for (uint8_t beeps = 0; beeps < 10; beeps++) { // Number of beeps = number of cells in series
-      tone(26, 3000, 4, 0);
-      delay(30);
-    }
-    while (locked) {
-      // wait here forever!
-    }
-  }
-#else
-  Serial.printf("Warning, BATTERY_PROTECTION disabled! ESC with low discharge protection required!\n");
-#endif
-  Serial.printf("-------------------------------------\n");
+void setupBattery()
+{
 }
 
 //
@@ -884,7 +871,18 @@ void setup() {
 
   // Serial setup
   Serial.begin(115200);// USB serial (for DEBUG) Mode, Rx pin (99 = not used), Tx pin
+#ifdef WEB_SERIAL
+  WiFi.softAP(ssid, password);
 
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+  // WebSerial is accessible at "<IP Address>/webserial" in browser
+  WebSerial.begin(&server);
+  /* Attach Message Callback */
+  WebSerial.msgCallback(recvMsg);
+  server.begin();
+#endif
   // ADC setup
   battery.attach(BATTERY_DETECT_PIN);
 
@@ -899,8 +897,6 @@ void setup() {
 
   setupBattery();
 
-
-
   // Semaphores are useful to stop a Task proceeding, where it should be paused to wait,
   // because it is sharing a resource, such as the PWM variable.
   // Semaphores should only be used whilst the scheduler is running, but we can set it up here.
@@ -911,11 +907,11 @@ void setup() {
       xSemaphoreGive( ( xPwmSemaphore ) );  // Make the PWM variable available for use, by "Giving" the Semaphore.
   }
 
-  if ( xRpmSemaphore == NULL )  // Check to confirm that the RPM Semaphore has not already been created.
+  if ( xVescSemaphore == NULL )  // Check to confirm that the RPM Semaphore has not already been created.
   {
-    xRpmSemaphore = xSemaphoreCreateMutex();  // Create a mutex semaphore we will use to manage variable access
-    if ( ( xRpmSemaphore ) != NULL )
-      xSemaphoreGive( ( xRpmSemaphore ) );  // Make the RPM variable available for use, by "Giving" the Semaphore.
+    xVescSemaphore = xSemaphoreCreateMutex();  // Create a mutex semaphore we will use to manage variable access
+    if ( ( xVescSemaphore ) != NULL )
+      xSemaphoreGive( ( xVescSemaphore ) );  // Make the RPM variable available for use, by "Giving" the Semaphore.
   }
 
 
@@ -948,6 +944,7 @@ void setup() {
   timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // autoreload true
   timerAlarmEnable(fixedTimer); // enable
 
+
 }
 
 //
@@ -970,6 +967,37 @@ void dacOffsetFade() {
 }
 
 
+/**
+ * @brief Get the vesc throttle object
+ * 
+ * @return int16_t 
+ */
+static int16_t get_vesc_throttle()
+{
+  uint32_t max, min, throttle;
+  int16_t val;
+#ifdef DUTY_TO_THROTTLE
+  throttle = (uint32_t)fabsf(VESC.appData.dutyCycle) * 100;
+  max = maxDuty;
+  min = minDuty;
+  if (throttle > max)
+    throttle = max;
+  if (throttle < min)
+    throttle = min;
+
+#else
+  throttle = fabsf(VESC.appData.erpm);
+  max = maxErpm;
+  min = minErpm;
+  if (throttle > max)
+    throttle = max;
+  if (throttle < min)
+    throttle = min;
+
+#endif
+  return (int16_t)map((uint32_t)throttle, min, max, minRpm, maxRpm);
+}
+
 //
 // =======================================================================================================
 // MAP PULSEWIDTH TO THROTTLE CH3
@@ -980,7 +1008,7 @@ void mapThrottle() {
 
   // Input is around 1000 - 2000us, output 0-500 for forward and backwards
   // Volume calculations --------------------------------------------------------------------------
-
+  currentThrottle = get_vesc_throttle();
   // As a base for some calculations below, fade the current throttle to make it more natural
   static unsigned long throttleFaderMicros;
   static boolean blowoffLock;
@@ -1256,26 +1284,6 @@ void gearboxDetection() {
   }
 #endif // End of overdrive ******************************************************************************************************
 
-#if not defined VIRTUAL_16_SPEED_SEQUENTIAL && not defined SEMI_AUTOMATIC// 3 gears, selected by 3 position switch **************
-  // Gear detection
-  if (pulseWidth[2] > 1700) selectedGear = 3;
-  else if (pulseWidth[2] < 1300) selectedGear = 1;
-  else selectedGear = 2;
-  if (overdrive && selectedGear == 3) selectedGear = 4;
-#endif // End of manual 3 speed *************************************************************************************************
-
-#if defined VIRTUAL_16_SPEED_SEQUENTIAL // 16 gears, selected by up / down impulses *********************************************
-  if (pulseWidth[2] > 1700 && selectedGear < 16 && !sequentialLock) {
-    sequentialLock = true;
-    selectedGear ++;
-  }
-  else if (pulseWidth[2] < 1300 && selectedGear > 1 && !sequentialLock) {
-    sequentialLock = true;
-    selectedGear --;
-  }
-  if (pulseWidth[2] > 1400 && pulseWidth[2] < 1600) sequentialLock = false;
-#endif // End of VIRTUAL_16_SPEED_SEQUENTIAL *************************************************************************************
-
 #if defined SEMI_AUTOMATIC // gears not controlled by the 3 position switch but by RPM limits ************************************
   if (currentRpm > 490 && selectedGear < 3 && engineLoad < 5 && currentThrottle > 490 && millis() - lastShiftingMillis > 2000) {
     selectedGear ++;
@@ -1447,229 +1455,6 @@ int8_t escPulse() { // ESC direction
 // If you connect your ESC to pin 33, the vehicle inertia is simulated. Direct brake (crawler) ESC required
 // *** WARNING!! Do it at your own risk!! There is a falisafe function in case, the signal input from the
 // receiver is lost, but if the ESP32 crashes, the vehicle could get out of control!! ***
-
-void esc() { // ESC main function ================================
-
-  // Battery protection --------------------------------
-#if defined BATTERY_PROTECTION
-  static unsigned long lastBatteryTime;
-  static bool outOfFuelMessageLock;
-  if (millis() - lastBatteryTime > 300) { // Check battery voltage every 300ms
-    lastBatteryTime = millis();
-    batteryVoltage = batteryVolts(); // Store voltage in global variable (also used in dashboard)
-    if (batteryVoltage < batteryCutoffvoltage) {
-      Serial.printf("Battery protection triggered, slowing down! Battery: %.2f V Threshold: %.2f V \n", batteryVoltage, batteryCutoffvoltage);
-      Serial.printf("Disconnect battery to prevent it from overdischarging!\n", batteryVoltage, batteryCutoffvoltage);
-      batteryProtection = true;
-    }
-    if (batteryVoltage > batteryCutoffvoltage + (FULLY_CHARGED_VOLTAGE * numberOfCells)) { // Recovery hysteresis
-      batteryProtection = false;
-    }
-    // Out of fuel message triggering
-    if (batteryProtection && !outOfFuelMessageLock) {
-      outOfFuelMessageTrigger = true;
-      outOfFuelMessageLock = true; // only trigger message once
-    }
-  }
-#endif // --------------------------------------------  
-
-#if not defined TRACKED_MODE && not defined AIRPLANE_MODE // No ESC control in TRACKED_MODE or in AIRPLANE_MODE
-  // Gear dependent ramp speed for acceleration & deceleration
-#if defined VIRTUAL_3_SPEED
-  escRampTime = escRampTimeThirdGear * 10 / virtualManualGearRatio[selectedGear];
-
-#elif defined VIRTUAL_16_SPEED_SEQUENTIAL
-  escRampTime = escRampTimeThirdGear * virtualManualGearRatio[selectedGear] / 5;
-
-#else // TAMIYA 3 speed shifting transmission
-  if (selectedGear == 1) escRampTime = escRampTimeFirstGear; // about 20
-  if (selectedGear == 2) escRampTime = escRampTimeSecondGear; // about 50
-  if (selectedGear == 3) escRampTime = escRampTimeThirdGear; // about 75
-#endif
-
-  if (automatic || doubleClutch) {
-    escRampTime = escRampTimeSecondGear; // always use 2nd gear acceleration for automatic transmissions
-    if (escInReverse) escRampTime = escRampTime * 100 / automaticReverseAccelerationPercentage; // faster acceleration in automatic reverse, EXPERIMENTAL, TODO!
-  }
-
-  // Allows to scale vehicle file dependent acceleration
-  escRampTime = escRampTime * 100 / globalAccelerationPercentage;
-
-  // ESC ramp time compensation in low range
-  if (lowRange) escRampTime = escRampTime * lowRangePercentage / 100;
-
-  // Drive mode -------------------------------------------
-  // Crawler mode for direct control -----
-  crawlerMode = (masterVolume <= masterVolumeCrawlerThreshold); // Direct control, depending on master volume
-
-  if (crawlerMode) { // almost no virtual inertia (just for drive train protection), for crawling competitions
-    escRampTime = crawlerEscRampTime;
-    brakeRampRate = map (currentThrottle, 0, 500, 1, 10);
-    driveRampRate = 10;
-  }
-  else { // Virtual inertia mode -----
-    // calulate throttle dependent brake & acceleration steps
-    brakeRampRate = map (currentThrottle, 0, 500, 1, escBrakeSteps);
-    driveRampRate = map (currentThrottle, 0, 500, 1, escAccelerationSteps);
-  } // ----------------------------------------------------
-
-  // Additional brake detection signal, applied immediately. Used to prevent sound issues, if braking very quickly
-  brakeDetect = ((pulse() == 1 && escPulse() == -1) || (pulse() == -1 && escPulse() == 1));
-
-#ifdef ESC_DEBUG
-  if (millis() - lastStateTime > 300) { // Print the data every 300ms
-    
-  }
-#endif // ESC_DEBUG
-
-  if (millis() - escMillis > escRampTime) { // About very 20 - 75ms
-    escMillis = millis();
-
-    // Drive state state machine **********************************************************************************
-    switch (driveState) {
-
-      case 0: // Standing still ---------------------------------------------------------------------
-        escIsBraking = false;
-        escInReverse = false;
-        escIsDriving = false;
-       // escPulseWidth = pulseZero[3];  // ESC to neutral position
-#ifdef VIRTUAL_16_SPEED_SEQUENTIAL
-        selectedGear = 1;
-#endif
-
-        if (pulse() == 1 && engineRunning && !neutralGear) driveState = 1; // Driving forward
-        if (pulse() == -1 && engineRunning && !neutralGear) driveState = 3; // Driving backwards
-        break;
-
-      case 1: // Driving forward ---------------------------------------------------------------------
-        escIsBraking = false;
-        escInReverse = false;
-        escIsDriving = true;
-        // if (escPulseWidth < pulseWidth[3] && currentSpeed < speedLimit && !batteryProtection) {
-        //   if (escPulseWidth >= escPulseMaxNeutral) escPulseWidth += (driveRampRate * driveRampGain); //Faster
-        //   else escPulseWidth = escPulseMaxNeutral; // Initial boost
-        // }
-        // if ((escPulseWidth > pulseWidth[3] || batteryProtection) && escPulseWidth > pulseZero[3]) escPulseWidth -= (driveRampRate * driveRampGain); // Slower
-
-        if (gearUpShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch) { // lowering RPM, if shifting up transmission
-#if not defined VIRTUAL_3_SPEED && not defined VIRTUAL_16_SPEED_SEQUENTIAL // Only, if we have a real 3 speed transmission        
-          escPulseWidth -= currentSpeed / 4; // Synchronize engine speed
-          //escPulseWidth -= currentSpeed * 40 / 100; // Synchronize engine speed TODO
-#endif
-          gearUpShiftingPulse = false;
-          //escPulseWidth = constrain(escPulseWidth, pulseZero[3], pulseMax[3]);
-        }
-        if (gearDownShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch) { // increasing RPM, if shifting down transmission
-#if not defined VIRTUAL_3_SPEED && not defined VIRTUAL_16_SPEED_SEQUENTIAL // Only, if we have a real 3 speed transmission      
-          escPulseWidth += 50; // Synchronize engine speed
-          //escPulseWidth += currentSpeed;// * 40 / 100; // Synchronize engine speed TODO
-#endif
-          gearDownShiftingPulse = false;
-          //escPulseWidth = constrain(escPulseWidth, pulseZero[3], pulseMax[3]);
-        }
-
-        if (pulse() == -1 && escPulse() == 1) driveState = 2; // Braking forward
-        if (pulse() == -1 && escPulse() == 0) driveState = 3; // Driving backwards, if ESC not yet moving. Prevents state machine from hanging! v9.7.0
-        if (pulse() == 0 && escPulse() == 0) driveState = 0; // standing still
-        break;
-
-      case 2: // Braking forward ---------------------------------------------------------------------
-        escIsBraking = true;
-        escInReverse = false;
-        escIsDriving = false;
-        //if (escPulseWidth > pulseZero[3]) escPulseWidth -= brakeRampRate; // brake with variable deceleration
-        //if (escPulseWidth < pulseZero[3] + brakeMargin && pulse() == -1) escPulseWidth = pulseZero[3] + brakeMargin; // Don't go completely back to neutral, if brake applied
-        //if (escPulseWidth < pulseZero[3] && pulse() == 0) escPulseWidth = pulseZero[3]; // Overflow prevention!
-
-        if (pulse() == 0 && escPulse() == 1 && !neutralGear) {
-          driveState = 1; // Driving forward
-          airBrakeTrigger = true;
-        }
-        if (pulse() == 0 && escPulse() == 0) {
-          driveState = 0; // standing still
-          airBrakeTrigger = true;
-        }
-        break;
-
-      case 3: // Driving backwards ---------------------------------------------------------------------
-        escIsBraking = false;
-        escInReverse = true;
-        escIsDriving = true;
-        //if (escPulseWidth > pulseWidth[3] && currentSpeed < speedLimit && !batteryProtection) {
-          //if (escPulseWidth <= escPulseMinNeutral) escPulseWidth -= (driveRampRate * driveRampGain); //Faster
-          //else escPulseWidth = escPulseMinNeutral; // Initial boost
-       // }
-        //if ((escPulseWidth < pulseWidth[3] || batteryProtection) && escPulseWidth < pulseZero[3]) escPulseWidth += (driveRampRate * driveRampGain); // Slower
-
-        if (gearUpShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch) { // lowering RPM, if shifting up transmission
-#if not defined VIRTUAL_3_SPEED && not defined VIRTUAL_16_SPEED_SEQUENTIAL // Only, if we have a real 3 speed transmission        
-          escPulseWidth += currentSpeed / 4; // Synchronize engine speed
-#endif
-          gearUpShiftingPulse = false;
-         // escPulseWidth = constrain(escPulseWidth, pulseMin[3], pulseZero[3]);
-        }
-        if (gearDownShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch) { // increasing RPM, if shifting down transmission
-#if not defined VIRTUAL_3_SPEED && not defined VIRTUAL_16_SPEED_SEQUENTIAL // Only, if we have a real 3 speed transmission      
-          escPulseWidth -= 50; // Synchronize engine speed
-#endif
-          gearDownShiftingPulse = false;
-          //escPulseWidth = constrain(escPulseWidth, pulseMin[3], pulseZero[3]);
-        }
-
-        if (pulse() == 1 && escPulse() == -1) driveState = 4; // Braking backwards
-        if (pulse() == 1 && escPulse() == 0) driveState = 1; // Driving forward, if ESC not yet moving. Prevents state machine from hanging! v9.7.0
-        if (pulse() == 0 && escPulse() == 0) driveState = 0; // standing still
-        break;
-
-      case 4: // Braking backwards ---------------------------------------------------------------------
-        escIsBraking = true;
-        escInReverse = true;
-        escIsDriving = false;
-        //if (escPulseWidth < pulseZero[3]) escPulseWidth += brakeRampRate; // brake with variable deceleration
-        //if (escPulseWidth > pulseZero[3] - brakeMargin && pulse() == 1) escPulseWidth = pulseZero[3] - brakeMargin; // Don't go completely back to neutral, if brake applied
-        //if (escPulseWidth > pulseZero[3] && pulse() == 0) escPulseWidth = pulseZero[3]; // Overflow prevention!
-
-        if (pulse() == 0 && escPulse() == -1 && !neutralGear) {
-          driveState = 3; // Driving backwards
-          airBrakeTrigger = true;
-        }
-        if (pulse() == 0 && escPulse() == 0) {
-          driveState = 0; // standing still
-          airBrakeTrigger = true;
-        }
-        break;
-
-    } // End of state machine **********************************************************************************
-
-
-    // Gain for drive ramp rate, depending on clutchEngagingPoint
-    if (currentSpeed < clutchEngagingPoint) {
-      if (!automatic  && !doubleClutch) driveRampGain = 2; // prevent clutch from slipping too much (2)
-      else driveRampGain = 4; // Automatic transmission needs to catch immediately (4)
-    }
-    else driveRampGain = 1;
-
-    // ESC linearity compensation ---------------------
-#ifdef QUICRUN_FUSION
-    escPulseWidthOut = reMap(curveQuicrunFusion, escPulseWidth);
-#elif defined QUICRUN_16BL30
-    escPulseWidthOut = reMap(curveQuicrun16BL30, escPulseWidth);
-#else
-    escPulseWidthOut = escPulseWidth;
-#endif // --------------------------------------------
-
-    // ESC range & direction calibration -------------
-#ifndef ESC_DIR
-    //escSignal = escPulseWidthOut;
-    escSignal = map(escPulseWidthOut, escPulseMin, escPulseMax, 1000, 2000);
-#else
-    escSignal = map(escPulseWidthOut, escPulseMax, escPulseMin, 1000, 2000); // direction inversed
-#endif // --------------------------------------------
-
-
-  }
-#endif
-}
 
 //
 // =======================================================================================================
@@ -1898,197 +1683,251 @@ void triggerIndicators() {
 
 void updateRGBLEDs() {
 
-  static uint32_t lastNeopixelTime = millis();
-  static bool knightRiderLatch = false;
-  static bool unionJackLatch = false;
-  static bool neopixelShow = false;
+ 
+}
 
-#ifdef NEOPIXEL_DEMO // Demo -------------------------------------------------------------
-  if (millis() - lastNeopixelTime > 20) { // Every 20 ms
-    lastNeopixelTime = millis();
+/**
+ * @brief 
+ * 
+ */
 
-    uint8_t hue = map(pulseWidth[1], 1000, 2000, 0, 255);
+void vesc()
+{
 
-    rgbLEDs[0] = CHSV(hue, hue < 255 ? 255 : 0, hue > 0 ? 255 : 0);
-    rgbLEDs[1] = CRGB::Red;
-    rgbLEDs[2] = CRGB::White;
-    rgbLEDs[3] = CRGB::Yellow;
-    rgbLEDs[4] = CRGB::Blue;
-    rgbLEDs[5] = CRGB::Green;
-    neopixelShow = true;
-  }
+#if not defined TRACKED_MODE // No ESC control in TRACKED_MODEl
+  static unsigned long escMillis;
+  static unsigned long lastStateTime;
+  static int8_t pulse;    // -1 = reverse, 0 = neutral, 1 = forward
+  static int8_t escPulse; // -1 = reverse, 0 = neutral, 1 = forward
+  static int8_t driveRampRate;
+  static int8_t driveRampGain;
+  static int8_t brakeRampRate;
+  static int16_t speed;
+  uint8_t escRampTime;
+  uint16_t max, min;
+  // Gear dependent ramp speed for acceleration & deceleration
+#if defined VIRTUAL_3_SPEED
+  escRampTime = escRampTimeThirdGear * 10 / virtualManualGearRatio[selectedGear];
+
+#elif defined VIRTUAL_16_SPEED_SEQUENTIAL
+  // escRampTime = escRampTimeThirdGear;// * 10 / map(virtualManualGearRatio[selectedGear], 155, 10, 23, 10);
+  escRampTime = escRampTimeThirdGear * virtualManualGearRatio[selectedGear] / 5;
+
+#else // TAMIYA 3 speed shifting transmission
+  if (selectedGear == 1)
+    escRampTime = escRampTimeFirstGear; // about 20
+  if (selectedGear == 2)
+    escRampTime = escRampTimeSecondGear; // about 50
+  if (selectedGear == 3)
+    escRampTime = escRampTimeThirdGear; // about 75
 #endif
 
-#ifdef NEOPIXEL_KNIGHT_RIDER // Knight Rider scanner -------------------------------------
-  static int16_t increment = 1;
-  static int16_t counter = 0;
-
-  if (millis() - lastNeopixelTime > 91) { // Every 91 ms (must match with sound)
-    lastNeopixelTime = millis();
-
-    if (sirenTrigger || knightRiderLatch) { // Only active, if siren signal!
-      if (counter >= NEOPIXEL_COUNT - 1) increment = -1;
-      if (counter <= 0) increment = 1;
-      knightRiderLatch = (counter > 0);
-      rgbLEDs[counter] = CRGB::Red;
-      counter += increment;
-    }
-    else {
-      counter = 0;
-    }
-    for (int i = 0; i < NEOPIXEL_COUNT; i++) {
-      rgbLEDs[i].nscale8(160);  //160
-    }
-    neopixelShow = true;
+  if (automatic || doubleClutch)
+  {
+    escRampTime = escRampTimeSecondGear; // always use 2nd gear acceleration for automatic transmissions
+    if (escInReverse)
+      escRampTime = escRampTime * 100 / automaticReverseAccelerationPercentage; // faster acceleration in automatic reverse, EXPERIMENTAL, TODO!
   }
+
+  if (millis() - escMillis > escRampTime)
+  { // About very 20 - 75ms
+    escMillis = millis();
+
+    // calulate throttle dependent brake & acceleration steps
+    brakeRampRate = map(currentThrottle, 0, 500, 1, escBrakeSteps);
+    driveRampRate = map(currentThrottle, 0, 500, 1, escAccelerationSteps);
+
+    // Comparators
+    if (fabsf(VESC.appData.erpm) > 60) // Not standing still
+    {
+
+      // positive erpm
+      if (VESC.appData.erpm > 0) // forward
+      {
+        if (VESC.appData.pidOutput > -2) // positive current(pid)    balanceData.motorCurrent or balanceData.pidOutput
+        {
+          // forward
+          escPulse = 1;
+          pulse = 1;
+        }
+        else // Negative current(pid)
+
+        {
+          // braking forward
+          pulse = 0;
+          escPulse = 1;
+        }
+      }
+      else if (VESC.appData.erpm < 0) // backward
+
+      {
+        if (VESC.appData.pidOutput < -2) // positive current(pid)    balanceData.motorCurrent or balanceData.pidOutput
+        {
+          // backward
+          escPulse = -1;
+          pulse = 0;
+        }
+        else // Negative current(pid)
+        {
+
+          // braking backward
+          pulse = 1;
+          escPulse = -1;
+        }
+      }
+    }
+    else ////  standing still
+    {
+      pulse = 1;
+      escPulse = 1;
+    }
+
+#ifdef ESC_DEBUG
+    if (millis() - lastStateTime > 300)
+    { // Print the data every 300ms
+      lastStateTime = millis();
+      Serial.println(driveState);
+      Serial.println(pulse);
+      Serial.println(escPulse);
+      Serial.println(escPulseMin);
+      Serial.println(escPulseMax);
+      Serial.println(brakeRampRate);
+      Serial.println(currentRpm);
+      Serial.println(escPulseWidth);
+      Serial.println(escPulseWidthOut);
+      Serial.println(currentSpeed);
+      Serial.println(speedLimit);
+      Serial.println("");
+    }
 #endif
 
-#ifdef NEOPIXEL_BLUELIGHT // Bluelight ----------------------------------------------------
-  static uint32_t lastNeopixelBluelightTime = millis();
+    // Drive state state machine **********************************************************************************
+    switch (driveState)
+    {
 
-  if (millis() - lastNeopixelTime > 20) { // Every 20 ms
-    lastNeopixelTime = millis();
-    if (blueLightTrigger) {
-      if (millis() - lastNeopixelBluelightTime > 0) { // Step 1
-        rgbLEDs[0] = CRGB::Red;
-        rgbLEDs[1] = CRGB::Blue;
-        rgbLEDs[3] = CRGB::Red;
-        rgbLEDs[4] = CRGB::Blue;
-        rgbLEDs[6] = CRGB::Red;
-        rgbLEDs[7] = CRGB::Blue;
-      }
-      if (millis() - lastNeopixelBluelightTime > 160) { // Step 2
-        fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::Black);
-      }
-      if (millis() - lastNeopixelBluelightTime > 300) { // Step 3
-        rgbLEDs[0] = CRGB::Blue;
-        rgbLEDs[1] = CRGB::Red;
-        rgbLEDs[3] = CRGB::Blue;
-        rgbLEDs[4] = CRGB::Red;
-        rgbLEDs[6] = CRGB::Blue;
-        rgbLEDs[7] = CRGB::Red;
-      }
-      if (millis() - lastNeopixelBluelightTime > 460) { // Step 4
-        fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::Black);
-      }
-      if (millis() - lastNeopixelBluelightTime > 600) { // Step 5
-        lastNeopixelBluelightTime = millis();
-      }
-    }
-    else fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::Black); // Off
-    neopixelShow = true;
-  }
+    case 0: // Standing still ---------------------------------------------------------------------
+      escIsBraking = false;
+      escInReverse = false;
+      escIsDriving = false;
+#ifdef VIRTUAL_16_SPEED_SEQUENTIAL
+      selectedGear = 1;
 #endif
 
-#ifdef NEOPIXEL_UNION_JACK // United Kingdom animation ---------------------------------------
-  static uint32_t lastNeopixelUnionJackTime = millis();
-  static uint8_t animationStep = 1;
+      if (pulse == 1 && engineRunning && !neutralGear)
+        driveState = 1; // Driving forward
+      if (pulse == -1 && engineRunning && !neutralGear)
+        driveState = 3; // Driving backwards
+      break;
 
-  if (sirenTrigger || unionJackLatch) {
-    unionJackLatch = true;
-    if (millis() - lastNeopixelUnionJackTime > 789) { // Every 789 ms (must match with sound "BritishNationalAnthemSiren.h")
-      lastNeopixelUnionJackTime = millis();
-      if (animationStep == 1 || animationStep == 9) { // Step 1 or 9
-        rgbLEDs[0] = CRGB::Red;
-        rgbLEDs[1] = CRGB::Blue;
-        rgbLEDs[2] = CRGB::Blue;
-        rgbLEDs[3] = CRGB::Red;
-        rgbLEDs[4] = CRGB::Red;
-        rgbLEDs[5] = CRGB::Blue;
-        rgbLEDs[6] = CRGB::Blue;
-        rgbLEDs[7] = CRGB::Red;
+    case 1: // Driving forward ---------------------------------------------------------------------
+      escIsBraking = false;
+      escInReverse = false;
+      escIsDriving = true;
+
+      if (gearUpShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch)
+      { // lowering RPM, if shifting up transmission
+
+        gearUpShiftingPulse = false;
       }
-      if (animationStep == 2 || animationStep == 8) { // Step 2 or 8
-        rgbLEDs[0] = CRGB::White;
-        rgbLEDs[1] = CRGB::Red;
-        rgbLEDs[2] = CRGB::Blue;
-        rgbLEDs[3] = CRGB::Red;
-        rgbLEDs[4] = CRGB::Red;
-        rgbLEDs[5] = CRGB::Blue;
-        rgbLEDs[6] = CRGB::Red;
-        rgbLEDs[7] = CRGB::White;
+      if (gearDownShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch)
+      { // increasing RPM, if shifting down transmission
+        gearDownShiftingPulse = false;
       }
-      if (animationStep == 3 || animationStep == 7) { // Step 3 or 7
-        rgbLEDs[0] = CRGB::Blue;
-        rgbLEDs[1] = CRGB::White;
-        rgbLEDs[2] = CRGB::Red;
-        rgbLEDs[3] = CRGB::Red;
-        rgbLEDs[4] = CRGB::Red;
-        rgbLEDs[5] = CRGB::Red;
-        rgbLEDs[6] = CRGB::White;
-        rgbLEDs[7] = CRGB::Blue;
+
+      if (pulse == -1 && escPulse == 1)
+        driveState = 2; // Braking forward
+      if (pulse == 0 && escPulse == 0)
+        driveState = 0; // standing still
+      break;
+
+    case 2: // Braking forward ---------------------------------------------------------------------
+      escIsBraking = true;
+      escInReverse = false;
+      escIsDriving = false;
+
+      if (pulse == 0 && escPulse == 1 && !neutralGear)
+      {
+        driveState = 1; // Driving forward
+        airBrakeTrigger = true;
       }
-      if (animationStep == 4 || animationStep == 5 || animationStep == 6) { // Step 4
-        rgbLEDs[0] = CRGB::Red;
-        rgbLEDs[1] = CRGB::Red;
-        rgbLEDs[2] = CRGB::Red;
-        rgbLEDs[3] = CRGB::Red;
-        rgbLEDs[4] = CRGB::Red;
-        rgbLEDs[5] = CRGB::Red;
-        rgbLEDs[6] = CRGB::Red;
-        rgbLEDs[7] = CRGB::Red;
+      if (pulse == 0 && escPulse == 0)
+      {
+        driveState = 0; // standing still
+        airBrakeTrigger = true;
       }
-      if (animationStep == 10) { // Step 10
-        fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::Black);
-        animationStep = 0;
-        unionJackLatch = false;
+      break;
+
+    case 3: // Driving backwards ---------------------------------------------------------------------
+      escIsBraking = false;
+      escInReverse = true;
+      escIsDriving = true;
+      if (gearUpShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch)
+      { // lowering RPM, if shifting up transmission
+        gearUpShiftingPulse = false;
       }
-      animationStep ++;
-      neopixelShow = true;
+      if (gearDownShiftingPulse && shiftingAutoThrottle && !automatic && !doubleClutch)
+      { // increasing RPM, if shifting down transmission
+
+        gearDownShiftingPulse = false;
+      }
+
+      if (pulse == 1 && escPulse == -1)
+        driveState = 4; // Braking backwards
+      if (pulse == 0 && escPulse == 0)
+        driveState = 0; // standing still
+      break;
+
+    case 4: // Braking backwards ---------------------------------------------------------------------
+      escIsBraking = true;
+      escInReverse = true;
+      escIsDriving = false;
+
+      if (pulse == 0 && escPulse == -1 && !neutralGear)
+      {
+        driveState = 3; // Driving backwards
+        airBrakeTrigger = true;
+      }
+      if (pulse == 0 && escPulse == 0)
+      {
+        driveState = 0; // standing still
+        airBrakeTrigger = true;
+      }
+      break;
+
+    } // End of state machine **********************************************************************************
+
+    // Gain for drive ramp rate, depending on clutchEngagingPoint
+    if (currentSpeed < clutchEngagingPoint)
+    {
+      if (!automatic && !doubleClutch)
+        driveRampGain = 2; // prevent clutch from slipping too much (2)
+      else
+        driveRampGain = 4; // Automatic transmission needs to catch immediately (4)
     }
-  }
-  else {
-    animationStep = 1;
-    lastNeopixelUnionJackTime = millis();
+    else
+    {
+      driveRampGain = 1;
+    }
+
+    // Calculate a speed value from the pulsewidth signal (used as base for engine sound RPM while clutch is engaged)
+
+    currentSpeed = get_vesc_throttle();
   }
 #endif
-
-#ifdef NEOPIXEL_HIGHBEAM // Neopixel bar is used as high beam as well --------------------
-  static uint32_t lastNeopixelHighbeamTime = millis();
-  if (millis() - lastNeopixelHighbeamTime > 20) { // Every 20 ms
-    lastNeopixelHighbeamTime = millis();
-
-    if (!knightRiderLatch && !sirenTrigger && !blueLightTrigger && !unionJackLatch) {
-      if (headLightsHighBeamOn || headLightsFlasherOn) fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::White);
-      else fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::Black);
-    }
-    neopixelShow = true;
-  }
-#endif
-
-#ifdef NEOPIXEL_B33LZ3BUB // B33lz3bub Austria cab light ---------------------------------
-  if (millis() - lastNeopixelTime > 20) { // Every 20 ms
-    lastNeopixelTime = millis();
-
-    uint8_t hue = map(pulseWidth[7], 1000, 2000, 0, 255);   // map pulseWidth[7] from poti VRA to hue
-    if (hue <= 20) {    // LEDs off
-      fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::Black);
-    }
-    else if (hue > 20 && hue < 235) {     // different colors depending on potentiometer VRA CH7
-      for (int i = 0; i < NEOPIXEL_COUNT; i++) {
-        rgbLEDs[i] = CHSV(hue, hue < 255 ? 255 : 0, hue > 0 ? 255 : 0);
-      }
-    }
-    else if (hue >= 235 && hue < 250) {   // colors red-white-red -> flag color of Austria ;-)
-      rgbLEDs[0] = CRGB::Red;
-      rgbLEDs[1] = CRGB::White;
-      rgbLEDs[2] = CRGB::Red;
-    }
-    else {
-      fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::White);  // only white
-    }
-    neopixelShow = true;
-  }
-#endif
-
-  // Neopixel refresh for all options above ------------------------------------------------
-  static uint32_t lastNeopixelRefreshTime = millis();
-  if (millis() - lastNeopixelRefreshTime > 20 && neopixelShow) { // Every 20 ms
-    lastNeopixelRefreshTime = millis();
-    FastLED.show();
-    neopixelShow = false;
+}
+void check_mute()
+{ 
+  static bool unmute;
+  unmute=((engineState > 0 )|| sirenTrigger || dieselKnockTrigger || airBrakeTrigger ||parkingBrakeTrigger ||shiftingTrigger || hornTrigger || sirenTrigger || sound1trigger|| couplingTrigger || uncouplingTrigger ||bucketRattleTrigger|| indicatorSoundOn);
+  if ( unmute )
+  {
+     AUDIO_UNMUTE();
+  } else 
+  {
+ AUDIO_MUTE();
   }
 }
+
 
 // =======================================================================================================
 // MAIN LOOP, RUNNING ON CORE 1
@@ -2101,16 +1940,26 @@ void loop() {
 
   // Horn triggering
   triggerHorn();
+  static uint32_t t=millis();
+
+  static int i=0;
+  if (millis()-t >1000)
+  {
+  WebSerial.print(i);
+  WebSerial.println("HELLO");
+  i+=1;
+  t=millis();
+  }
 
   // Indicator (turn signal) triggering
   triggerIndicators();
 
-  if ( xSemaphoreTake( xRpmSemaphore, portMAX_DELAY ) )
+  if ( xSemaphoreTake( xVescSemaphore, portMAX_DELAY ) )
   {
     // Map pulsewidth to throttle
     mapThrottle();
 
-    xSemaphoreGive( xRpmSemaphore ); // Now free or "Give" the semaphore for others.
+    xSemaphoreGive( xVescSemaphore ); // Now free or "Give" the semaphore for others.
   }
 
 
@@ -2143,13 +1992,14 @@ void Task1code(void *pvParameters) {
     // DAC offset fader
     dacOffsetFade();
 
-    if ( xSemaphoreTake( xRpmSemaphore, portMAX_DELAY ) )
+    if ( xSemaphoreTake( xVescSemaphore, portMAX_DELAY ) )
     {
       // Simulate engine mass, generate RPM signal
+      
       engineMassSimulation();
       // Call gear selector
       if (automatic || doubleClutch) automaticGearSelector();
-      xSemaphoreGive( xRpmSemaphore ); // Now free or "Give" the semaphore for others.
+      xSemaphoreGive( xVescSemaphore ); // Now free or "Give" the semaphore for others.
     }
 
     // Switch engine on or off
@@ -2159,7 +2009,7 @@ void Task1code(void *pvParameters) {
     gearboxDetection();
 
     // ESC control & low discharge protection
-    esc();
+    vesc();
 
     // measure loop time
     loopTime = loopDuration(); // for debug only

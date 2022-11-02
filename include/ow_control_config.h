@@ -11,7 +11,7 @@
 #ifndef OW_CONTROL_CONFIG_H_
 #define OW_CONTROL_CONFIG_H_
 #include <Arduino.h>
-#define DUTY_TO_THROTTLE // you want to vesc dutycycle as throttle else use abd ermp as throttle 
+//#define DUTY_TO_THROTTLE // you want to vesc dutycycle as throttle else use abd ermp as throttle 
 #define ESP32_DEBUG // DEBUG ESP32 
 #define USE_DUAL_HEAD_LIGHT // USE dual led  for headlight
 #define USE_RGB_LED         // use ws2812 RGB led
@@ -43,20 +43,7 @@
 #define ESP_VESC_TX_PIN 16
 #define ESP_VESC_RX_PIN 17
 // Voltage divider resistors Low R5=? ,up R3=?
-#ifdef READ_BATTERY_VOL_FROM_ADC 
-#define BATTERY_DETECT_PIN 34
-#define RES_TO_GND 2200                // R5 2.2k
-#define RES_TO_BATTTERY_PLUS 68000    // R3  68K
-#define BATTERY_CUTOFF_VOLTAGE 3.3;        // Usually 3.3 V per LiPo cell. NEVER below 3.2 V!
-#define BATTERY_FULLY_CHARGED_VOLTAGE 4.2; // Usually 4.2 V per LiPo cell, NEVER above!
-#define BATTERY_RECOVERY_HYSTERESIS 0.2;   // around 0.2 V
-#define DIODE_DROP 0.0
-#ifdef BATTERY_PROTECTION
-volatile int outOfFuelVolumePercentage = 80; // Adjust the message volume in %
 
-#endif
-#define VOLTAGE_CALIBRATION (RE_TO_BATTTERY_PLUS + RESTO_GND) / RES_TO_GND + DIODE_DROP
-#endif
 // push button for trigger Horn & siren
 #define PUSH_BUTTON_PIN 0
 // RGB LED ws2812 driver pin
@@ -88,6 +75,14 @@ typedef enum
   SWITCH_ON
 } SwitchState;
 
+
+//using VESC controll id to get source 
+typedef enum
+{ 
+  SOURCE_CSR,
+  SOURCE_ESP32,
+} AudioSource;
+
 struct vesc_data
 { 
   volatile float pidOutput;
@@ -98,7 +93,7 @@ struct vesc_data
   // float debug1; // unwant skip it
   volatile uint16_t state;
   volatile SwitchState switchState;
-  volatile uint16_t killSwMode;
+  volatile uint16_t vescId;
   volatile float dutyCycle;
   volatile float erpm;
   volatile float inputVoltage;
