@@ -9,6 +9,7 @@
  *
  */
 #ifndef OW_CONTROL_CONFIG_H_
+
 #define OW_CONTROL_CONFIG_H_
 #include <Arduino.h>
 //#define DUTY_TO_THROTTLE // you want to vesc dutycycle as throttle else use abd ermp as throttle 
@@ -43,7 +44,11 @@
 #define ESP_VESC_TX_PIN 16
 #define ESP_VESC_RX_PIN 17
 // Voltage divider resistors Low R5=? ,up R3=?
+//#ifdef READ_BATTERY_VOL_FROM_ADC 
 
+//#endif
+//#define VOLTAGE_CALIBRATION (RE_TO_BATTTERY_PLUS + RESTO_GND) / RES_TO_GND + DIODE_DROP
+//#endif
 // push button for trigger Horn & siren
 #define PUSH_BUTTON_PIN 0
 // RGB LED ws2812 driver pin
@@ -75,29 +80,11 @@ typedef enum
   SWITCH_ON
 } SwitchState;
 
-
+//audio source
 //using VESC controll id to get source 
 typedef enum
 { 
   SOURCE_CSR,
   SOURCE_ESP32,
 } AudioSource;
-
-struct vesc_data
-{ 
-  volatile float pidOutput;
-  volatile float pitch;
-  volatile float roll;
-  volatile uint32_t loopTime;
-  volatile float motorCurrent;
-  // float debug1; // unwant skip it
-  volatile uint16_t state;
-  volatile SwitchState switchState;
-  volatile uint16_t vescId;
-  volatile float dutyCycle;
-  volatile float erpm;
-  volatile float inputVoltage;
-
-};
-
 #endif
