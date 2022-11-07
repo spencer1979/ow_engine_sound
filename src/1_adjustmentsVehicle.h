@@ -62,7 +62,7 @@
 // US cars --------
 //#include "vehicles/ChevyNovaCoupeV8.h" // 1975 Chevy Nova Coupe V8
 //#include "vehicles/1965FordMustangV8.h"// 1965 Ford Mustang V8
-//#include "vehicles/Chevy468.h" // Chevy 468 big block V8
+#include "vehicles/Chevy468.h" // Chevy 468 big block V8
 
 // EU cars --------
 //#include "vehicles/VwBeetle.h" // VW Käfer / Beetle
@@ -95,7 +95,7 @@
 //#include "vehicles/HiluxDiesel.h" // Hilux Diesel with inline 6 12H Turbo Diesel engine (for HG-P407)
 
 // EU locomotives --------
-#include "vehicles/Adler.h" // German Adler steam locomotive
+//#include "vehicles/Adler.h" // German Adler steam locomotive
 
 // US locomotives --------
 //#include "vehicles/UnionPacific2002.h" // Union Pacific 2002 SD70M locomotive with enormous, low revving 16 cylinder Diesel

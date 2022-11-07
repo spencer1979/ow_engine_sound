@@ -101,7 +101,7 @@ volatile int shiftingVolumePercentage = 100; // Adjust the shifting volume (usua
 // Choose the additional "sound1" (uncomment the one you want) --------
 volatile int sound1VolumePercentage = 100; // Adjust the sound1 volume (usually = 100%)
 //#include "sounds/007JamesBond.h" // James Bond melody
-#include "sounds/door.h" // opening and closing the door
+#include "sounds/welcome.h" // opening and closing the door
 
 // Choose the reversing beep sound --------
 volatile int reversingVolumePercentage = 0; // Adjust the reversing sound volume (usually = 70%)

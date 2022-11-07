@@ -30,7 +30,7 @@ volatile const uint16_t idleVolumeProportionPercentage = 90; // The idle sound v
 #endif
 
 // Choose the jake brake sound (uncomment the one you want) --------
-//#define JAKE_BRAKE_SOUND // uncomment this, if you want to use the jake brake sound
+#define JAKE_BRAKE_SOUND // uncomment this, if you want to use the jake brake sound
 volatile int jakeBrakeVolumePercentage = 200; // Adjust the max. volume (usually = 150%)
 volatile int jakeBrakeIdleVolumePercentage = 0; // Adjust the min. volume (usually = 80%)
 volatile int jakeBrakeMinRpm = 200; // Adjust the min. RPM for the jake brake (around 100)
@@ -134,7 +134,7 @@ volatile int parkingBrakeVolumePercentage = 200; // Adjust the brake volume (usu
 //#include "sounds/ParkingBrake.h" // Parking brake sound
 
 // Choose the gear shifting sound (uncomment the one you want) --------
-volatile int shiftingVolumePercentage = 100; // Adjust the shifting volume (usually = 200%)
+volatile int shiftingVolumePercentage = 200; // Adjust the shifting volume (usually = 200%)
 #include "sounds/AirShiftingDummy.h" // If you don't want pneumatic shifting sound
 //#include "sounds/AirShifting.h" // Pneumatic shifting sound
 //#include "sounds/ClunkingGearShifting.h" // Manual clunking shifting sound
@@ -169,7 +169,7 @@ const uint8_t escAccelerationSteps = 3; // determines, how fast the ESC is able 
 
 // Gearbox parameters (select number of automatic gears in curves.h)-----------------------------------------------------
 const boolean automatic = true; // false = linear rpm curve, true = automatic transmission with torque converter is simulated (use it, if you don't have a real shifting transmission)
-#define NumberOfAutomaticGears 3 // <<------- Select 3, 4 or 6 gears!
+#define NumberOfAutomaticGears 4 // <<------- Select 3, 4 or 6 gears!
 const boolean doubleClutch = false; // do not activate it at the same time as automatic!
 const boolean shiftingAutoThrottle = true; // For Tamiya 3 speed tansmission, throttle is altered for synchronizing, if "true"
 
