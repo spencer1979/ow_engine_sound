@@ -183,7 +183,7 @@ volatile uint16_t throttleDependentTurboVolume = 0;   // turbo volume according 
 volatile uint16_t throttleDependentFanVolume = 0;     // cooling fan volume according to rpm
 volatile uint16_t throttleDependentChargerVolume = 0; // cooling fan volume according to rpm
 volatile uint16_t rpmDependentWastegateVolume = 0;    // wastegate volume according to rpm
-
+volatile uint16_t tireSquealVolume = 0;                  // Tire squeal volume according to speed and cornering radius
 volatile uint16_t trackRattleVolume = 0; // track rattling volume
 
 volatile uint64_t dacDebug = 0;      // DAC debug variable TODO
@@ -248,11 +248,13 @@ uint8_t numberOfCells;
 bool batteryProtection = false;
 
 // VESC var
+#define NEUTRAL_ERPM 200.0 //  rang in -200 < 0 < 200 erpm is neutral 
+#define NEUTRAL_PID 5.0 //  rang in -5 < 0 < 5 erpm is neutral 
+#define MAX_ERPM 4000 
+#define MIN_ERPM 300 
 volatile float vescErpm;
 volatile float vescPid;
 volatile SwitchState vescSwitchState;
-const float maxErpm = 4000;
-const float minErpm = 200;
 const uint32_t engineOffDelay = 5000; // engine off delay
 unsigned long engineOffTimer ;
 unsigned long sourceCheckTimer ; //check the vesc id , 0 is ble audio , 1 is engine sound.
@@ -569,6 +571,7 @@ void IRAM_ATTR fixedPlaybackTimer()
   static uint32_t curShiftingSample = 0;                    // Index of currently loaded shifting sample
   static uint32_t curDieselKnockSample = 0;                 // Index of currently loaded Diesel knock sample
   static uint32_t curTrackRattleSample = 0;                 // Index of currently loaded track rattle sample
+  static uint32_t curTireSquealSample = 0;                     // Index of currently loaded tire squeal sample
   static uint32_t curOutOfFuelSample = 0;                   // Index of currently loaded out of fuel sample
   static int32_t a, a1, a2 = 0;                             // Input signals "a" for mixer
   static int32_t b, b0, b1, b2, b3, b4, b5, b6, b7, b9 = 0; // Input signals "b" for mixer
@@ -851,19 +854,19 @@ void IRAM_ATTR fixedPlaybackTimer()
 
   // Group "d" (additional sounds) **********************************************************************
 
-// #if defined TIRE_SQUEAL
-//   // Tire squeal sound -----------------------
-//   if (curTireSquealSample < tireSquealSampleCount - 1)
-//   {
-//     d1 = (tireSquealSamples[curTireSquealSample] * tireSquealVolumePercentage / 100 * tireSquealVolume / 100);
-//     curTireSquealSample++;
-//   }
-//   else
-//   {
-//     d1 = 0;
-//     curTireSquealSample = 0;
-//   }
-// #endif
+#if defined TIRE_SQUEAL
+  // Tire squeal sound -----------------------
+  if (curTireSquealSample < tireSquealSampleCount - 1)
+  {
+    d1 = (tireSquealSamples[curTireSquealSample] * tireSquealVolumePercentage / 100 * tireSquealVolume / 100);
+    curTireSquealSample++;
+  }
+  else
+  {
+    d1 = 0;
+    curTireSquealSample = 0;
+  }
+#endif
 
 #if defined BATTERY_PROTECTION
   // Out of fuel sound, triggered by battery voltage -----------------------------------------------
@@ -1122,9 +1125,9 @@ static int16_t get_vesc_throttle()
 {
   uint32_t  throttle;
   throttle = fabsf(vescErpm);
-  throttle =MAX( throttle ,minErpm);
-  throttle =MIN( throttle ,maxErpm);
-  return (int16_t)map((uint32_t)throttle, minErpm, maxErpm, minRpm, maxRpm);
+  throttle =MAX( throttle ,MIN_ERPM); // limit min erpm
+  throttle =MIN( throttle ,MAX_ERPM); //limit max erpm
+  return (int16_t)map((uint32_t)throttle, MIN_ERPM, MAX_ERPM, minRpm, maxRpm);
 }
 
 //
@@ -1234,6 +1237,21 @@ void mapThrottle()
     engineLoad = 0; // Range is 0 - 180
   if (engineLoad > 180)
     engineLoad = 180;
+
+
+      // Additional sounds volumes -----------------------------
+
+  // Tire squealing ----
+  uint8_t steeringAngle = 0;
+  uint8_t brakeSquealVolume = 0;
+
+
+  // Brake squealing
+  if ((driveState == 2 || driveState == 4) && currentSpeed > 50 && currentThrottle > 250) {
+    tireSquealVolume += map(currentThrottle, 250, 500, 0, 100);
+  }
+
+  tireSquealVolume = constrain(tireSquealVolume, 0, 100);
 }
 
 //
@@ -1650,30 +1668,40 @@ static int8_t driveRampRate;
 static int8_t driveRampGain;
 static int8_t brakeRampRate;
 uint16_t escRampTime;
-
-// ESC sub functions =============================================
-// We always need the data up to date, so these comparators are programmed as sub functions!
-int8_t rpmPulse()
+/**
+ * @brief check the one wheel forward ,backward and neutral .
+ * 
+ * @param val  can be pid or erpm 
+ * @param range neutral range 
+ * @return int8_t 
+ */
+int8_t checkPulse(float val , uint32_t range )
 { // rpm direction
   int8_t _rpmPulse;
-  if (vescErpm > minErpm)
-    _rpmPulse = 1; // 1 = Forward
-  else if (vescErpm < -(minErpm))
-    _rpmPulse = -1; // -1 = Backwards
-  else
+  if (((val+ range ) * (range - val)) > 0) // check val is in the range +/-range
+  {
     _rpmPulse = 0; // 0 = Neutral
+
+  } else 
+  {
+    if (val > range )
+    _rpmPulse = 1; // 1 = Forward
+    else 
+     _rpmPulse = -1; // -1 = backwards
+  }
+
   return _rpmPulse;
 }
+
+int8_t rpmPulse()
+{ // rpm direction
+  return checkPulse(vescErpm,NEUTRAL_ERPM);
+}
+
+
 int8_t pidPulse()
-{ // pid direction
-  int8_t _pidPulse;
-  if (vescPid > 0)
-    _pidPulse = 1; // 1 = Forward
-  else if (vescPid < -2)
-    _pidPulse = -1; // -1 = Backwards
-  else
-    _pidPulse = 0; // 0 = Neutral
-  return _pidPulse;
+{ 
+  return checkPulse(vescPid,NEUTRAL_PID);
 }
 
 // If you connect your ESC to pin 33, the vehicle inertia is simulated. Direct brake (crawler) ESC required
@@ -2113,7 +2141,7 @@ void check_mute( uint32_t time )
   static unsigned long _timer =millis();
   if (millis() - _timer > time && source == SOURCE_ESP32)
   {
-    unmute = ((engineState > 0) || sirenTrigger || dieselKnockTrigger || airBrakeTrigger || parkingBrakeTrigger || shiftingTrigger || hornTrigger || sirenTrigger || sound1trigger || couplingTrigger || uncouplingTrigger || bucketRattleTrigger || indicatorSoundOn);
+    unmute = ((engineState > 0) || sirenTrigger || dieselKnockTrigger || airBrakeTrigger || parkingBrakeTrigger || shiftingTrigger || hornTrigger || sirenTrigger || sound1trigger || couplingTrigger || uncouplingTrigger || bucketRattleTrigger || indicatorSoundOn );
     if (unmute)
     {
 
@@ -2171,7 +2199,7 @@ void get_fake_data()
   if (millis() - fakeTimer > 250)
   {
     vescSwitchState=SWITCH_ON;
-    vescErpm=maxErpm*sin(val*angle);
+    vescErpm=MAX_ERPM*sin(val*angle);
     Serial.print("Fake Vesc Erpm :");
     Serial.println( vescErpm  );
     vescPid=100*sin(90-(val*angle));
@@ -2214,7 +2242,7 @@ void loop()
     if (source == SOURCE_ESP32 )
     {
        CSR_POWER_OFF();
-        AUDIO_SOURCE_ESP();
+      AUDIO_SOURCE_ESP();
 
       if (vescSwitchState == SWITCH_ON)
       {
