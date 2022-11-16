@@ -9,7 +9,8 @@
  *
  */
 #ifndef OW_CONTROL_CONFIG_H_
-
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
 #define OW_CONTROL_CONFIG_H_
 #include <Arduino.h>
 //#define DUTY_TO_THROTTLE // you want to vesc dutycycle as throttle else use abd ermp as throttle 

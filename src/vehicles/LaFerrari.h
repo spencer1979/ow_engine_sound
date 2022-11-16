@@ -8,8 +8,8 @@ volatile int startVolumePercentage = 150; // Adjust the start volume (usually = 
 #include "sounds/LaFerrariStart.h" // Ferrari LaFerrari, V12
 
 // Choose the motor idle sound (uncomment the one you want) --------
-volatile int idleVolumePercentage = 80; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
-volatile int engineIdleVolumePercentage = 60; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
+volatile int idleVolumePercentage = 120; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
+volatile int engineIdleVolumePercentage = 100; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
 volatile int fullThrottleVolumePercentage = 130; // Volume Percentage while full throttle (for rev sound as well)
 #include "sounds/LaFerrariIdle.h" // Jaguar XJS V12
 //#include "sounds/idleDummy.h" // Dummy
@@ -26,7 +26,7 @@ volatile const uint16_t idleVolumeProportionPercentage = 100; // The idle sound 
 #endif
 
 // Choose the jake brake sound (uncomment the one you want) --------
-//#define JAKE_BRAKE_SOUND // uncomment this, if you want to use the jake brake sound
+#define JAKE_BRAKE_SOUND // uncomment this, if you want to use the jake brake sound
 volatile int jakeBrakeVolumePercentage = 140; // Adjust the max. volume (usually = 150%)
 volatile int jakeBrakeIdleVolumePercentage = 0; // Adjust the min. volume (usually = 80%)
 volatile int jakeBrakeMinRpm = 200; // Adjust the min. RPM for the jake brake (around 100)
@@ -106,9 +106,9 @@ volatile int sirenVolumePercentage = 100; // Adjust the siren volume (usually = 
 
 // Choose the air brake release sound (uncomment the one you want) --------
 volatile int brakeVolumePercentage = 150; // Adjust the brake volume (usually = 200%)
-#include "sounds/AirBrakeDummy.h" // If you don't want air brake sound
+//#include "sounds/AirBrakeDummy.h" // If you don't want air brake sound
 //#include "sounds/TruckAirBrakes.h" // Short truck air brake sound
-//#include "sounds/TruckAirBrakesLong.h" // Long truck air brake sound
+#include "sounds/TruckAirBrakesLong.h" // Long truck air brake sound
 //#include "sounds/TruckAirBrakes2.h" // Another truck air brake sound
 //#include "sounds/AirBrakeSqueak.h" // Squeaky air brake sound
 //#include "sounds/AirBrakeSqueak2.h" // Squeaky air brake sound
@@ -116,25 +116,25 @@ volatile int brakeVolumePercentage = 150; // Adjust the brake volume (usually = 
 
 // Choose the parking brake engaging sound (uncomment the one you want) --------
 volatile int parkingBrakeVolumePercentage = 150; // Adjust the brake volume (usually = 200%)
-#include "sounds/ParkingBrakeDummy.h" // If you don't want parking brake sound
-//#include "sounds/ParkingBrake.h" // Parking brake sound
+//#include "sounds/ParkingBrakeDummy.h" // If you don't want parking brake sound
+#include "sounds/ParkingBrake.h" // Parking brake sound
 
 // Choose the gear shifting sound (uncomment the one you want) --------
-volatile int shiftingVolumePercentage = 100; // Adjust the shifting volume (usually = 200%)
+volatile int shiftingVolumePercentage = 200; // Adjust the shifting volume (usually = 200%)
 //#include "sounds/AirShiftingDummy.h" // If you don't want pneumatic shifting sound
-//#include "sounds/AirShifting.h" // Pneumatic shifting sound
-#include "sounds/ClunkingGearShifting.h" // Manual clunking shifting sound
+#include "sounds/AirShifting.h" // Pneumatic shifting sound
+//#include "sounds/ClunkingGearShifting.h" // Manual clunking shifting sound
 
 // Choose the additional "sound1" (uncomment the one you want) --------
-volatile int sound1VolumePercentage = 100; // Adjust the sound1 volume (usually = 100%)
+volatile int sound1VolumePercentage = 70; // Adjust the sound1 volume (usually = 100%)
 //#include "sounds/EMDLocomotiveBell.h" // American EMD locomotive bell
 //#include "sounds/007JamesBond.h" // James Bond melody
 //#include "sounds/M2Fire.h" // M2 salve
 //#include "sounds/GlenCanyon.h" // Glen Canyon country song for truckers ;-)
-#include "sounds/door.h" // opening and closing the door
+#include "sounds/welcome.h" // opening and closing the door
 
 // Choose the reversing beep sound --------
-volatile int reversingVolumePercentage = 70; // Adjust the reversing sound volume (usually = 70%)
+volatile int reversingVolumePercentage = 90; // Adjust the reversing sound volume (usually = 70%)
 #include "sounds/TruckReversingBeep.h" // 1000Hz peep sound
 
 // Choose the indicator / turn signal options --------
@@ -163,7 +163,7 @@ const uint8_t escAccelerationSteps = 3; // determines, how fast the ESC is able 
 
 // Gearbox parameters ---------------------------------------------------------------------------------------------------
 const boolean automatic = true; // false = linear rpm curve, true = automatic transmission with torque converter is simulated (use it, if you don't have a real shifting transmission)
-#define NumberOfAutomaticGears 6 // <<------- Select 3, 4 or 6 gears!
+#define NumberOfAutomaticGears 3 // <<------- Select 3, 4 or 6 gears!
 const boolean doubleClutch = false; // do not activate it at the same time as automatic!
 const boolean shiftingAutoThrottle = true; // For Tamiya 3 speed tansmission, throttle is altered for synchronizing, if "true"
 
