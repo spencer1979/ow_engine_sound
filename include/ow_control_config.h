@@ -19,7 +19,7 @@
 #define USE_RGB_LED         // use ws2812 RGB led
 #define USE_FAN_COOLING             // use fan for cooling
 #define READ_BATTERY_VOL_FROM_ADC //read Battery voltage from adc 
-#define BATTERY_PROTECTION
+//#define BATTERY_PROTECTION
 // PWM LED driver pin
 #define LED1_PIN 23
 #define LED2_PIN 22

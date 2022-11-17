@@ -248,10 +248,10 @@ uint8_t numberOfCells;
 bool batteryProtection = false;
 
 // VESC var
-#define NEUTRAL_ERPM 200.0 //  rang in -200 < 0 < 200 erpm is neutral 
-#define NEUTRAL_PID 5.0 //  rang in -5 < 0 < 5 erpm is neutral 
+#define NEUTRAL_ERPM 500.0 //  rang in -200 < 0 < 200 erpm is neutral 
+#define NEUTRAL_PID 10 //  rang in -5 < 0 < 5 erpm is neutral 
 #define MAX_ERPM 4000 
-#define MIN_ERPM 300 
+#define MIN_ERPM 500 
 volatile float vescErpm;
 volatile float vescPid;
 volatile SwitchState vescSwitchState;
@@ -1241,17 +1241,17 @@ void mapThrottle()
 
       // Additional sounds volumes -----------------------------
 
-  // Tire squealing ----
-  uint8_t steeringAngle = 0;
-  uint8_t brakeSquealVolume = 0;
+  // // Tire squealing ----
+  // uint8_t steeringAngle = 0;
+  // uint8_t brakeSquealVolume = 0;
 
 
-  // Brake squealing
-  if ((driveState == 2 || driveState == 4) && currentSpeed > 50 && currentThrottle > 250) {
-    tireSquealVolume += map(currentThrottle, 250, 500, 0, 100);
-  }
+  // // Brake squealing
+  // if ((driveState == 2 || driveState == 4) && currentSpeed > 50 && currentThrottle > 250) {
+  //   tireSquealVolume += map(currentThrottle, 250, 500, 0, 100);
+  // }
 
-  tireSquealVolume = constrain(tireSquealVolume, 0, 100);
+  // tireSquealVolume = constrain(tireSquealVolume, 0, 100);
 }
 
 //
@@ -1661,7 +1661,6 @@ static uint16_t escPulseWidth = 1500;
 static uint16_t escPulseWidthOut = 1500;
 static uint16_t escSignal = 1500;
 static unsigned long escMillis;
-static unsigned long brakeMillis;
 // static int8_t pulse; // -1 = reverse, 0 = neutral, 1 = forward
 // static int8_t escPulse; // -1 = reverse, 0 = neutral, 1 = forward
 static int8_t driveRampRate;
@@ -1759,19 +1758,9 @@ void esc()
     brakeRampRate = map(currentThrottle, 0, 500, 1, escBrakeSteps);
     driveRampRate = map(currentThrottle, 0, 500, 1, escAccelerationSteps);
   } // ----------------------------------------------------
-  brakeMillis=millis();
-  // Additional brake detection signal, applied immediately. Used to prevent sound issues, if braking very quickly
-  //brakeDetect = ((rpmPulse() == 1 && pidPulse() == -1) || (rpmPulse() == -1 && pidPulse() == 1));
-  if (((rpmPulse() == 1 && pidPulse() == -1) || (rpmPulse() == -1 && pidPulse() == 1)) && (millis() - brakeMillis > 100))
 
-  {
-    brakeDetect = true;
-    brakeMillis = millis();
-  }
-  else
-  {
-    brakeDetect = false;
-  }
+  // Additional brake detection signal, applied immediately. Used to prevent sound issues, if braking very quickly
+  brakeDetect = ((rpmPulse() == 1 && pidPulse() == -1) || (rpmPulse() == -1 && pidPulse() == 1));
 
 
   if (millis() - escMillis > escRampTime)

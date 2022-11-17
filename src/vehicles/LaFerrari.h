@@ -4,12 +4,12 @@
 
 // Sound files (22'050 Hz, 8 bit PCM recommended) -----------------------------------------------------------------------
 // Choose the start sound (uncomment the one you want) --------
-volatile int startVolumePercentage = 150; // Adjust the start volume (usually = 100%)
+volatile int startVolumePercentage = 110; // Adjust the start volume (usually = 100%)
 #include "sounds/LaFerrariStart.h" // Ferrari LaFerrari, V12
 
 // Choose the motor idle sound (uncomment the one you want) --------
-volatile int idleVolumePercentage = 120; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
-volatile int engineIdleVolumePercentage = 100; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
+volatile int idleVolumePercentage = 110; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
+volatile int engineIdleVolumePercentage = 90; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
 volatile int fullThrottleVolumePercentage = 130; // Volume Percentage while full throttle (for rev sound as well)
 #include "sounds/LaFerrariIdle.h" // Jaguar XJS V12
 //#include "sounds/idleDummy.h" // Dummy
@@ -105,7 +105,7 @@ volatile int sirenVolumePercentage = 100; // Adjust the siren volume (usually = 
 //#include "sounds/PostAutoHorn.h" // The typical Swiss post bus horn
 
 // Choose the air brake release sound (uncomment the one you want) --------
-volatile int brakeVolumePercentage = 150; // Adjust the brake volume (usually = 200%)
+volatile int brakeVolumePercentage = 200; // Adjust the brake volume (usually = 200%)
 //#include "sounds/AirBrakeDummy.h" // If you don't want air brake sound
 //#include "sounds/TruckAirBrakes.h" // Short truck air brake sound
 #include "sounds/TruckAirBrakesLong.h" // Long truck air brake sound
@@ -144,8 +144,8 @@ const boolean INDICATOR_DIR = true; // adjust indicator direction with true or f
 #include "sounds/Indicator.h" // "Tick-Tack" sound
 
 // Choose the tire squealing sound (uncomment the ones you want) --------
-#define TIRE_SQUEAL
-volatile int tireSquealVolumePercentage = 160; // Adjust the tire squeal volume
+//#define TIRE_SQUEAL
+volatile int tireSquealVolumePercentage = 100; // Adjust the tire squeal volume
 #include "sounds/TireSqueal2.h"
 
 // Choose the light options --------

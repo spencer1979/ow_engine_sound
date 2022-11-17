@@ -17,7 +17,7 @@
 //附加傳輸選項================================================ ==================================================== ========
 //帶超速檔的自動變速器（最高檔時轉速較低，齒輪比低於 1:1，僅限 4 和 6 速）
 //也可與 VIRTUAL_3_SPEED 結合使用。在這種情況下，如果以 3 檔行駛 @ 全油門，則 4 檔會自動切換
-#define OVERDRIVE//不要將其用於：doubleClutch。不使用 SEMI_AUTOMATIC，但在這種情況下您可以將其保持打開狀態。
+//#define OVERDRIVE//不要將其用於：doubleClutch。不使用 SEMI_AUTOMATIC，但在這種情況下您可以將其保持打開狀態。
 //在某些情況下，我們希望自動變速箱車輛具有不同的反向加速。
 uint16_t automaticReverseAccelerationPercentage = 100;
 
@@ -26,7 +26,7 @@ uint16_t lowRangePercentage = 58;// WPL 2 speed ratios = 29:1, 17:1 = 58% in low
 
 // Transmission controls options ===========================================================================================================
 // #define SEMI_AUTOMATIC This will simulate a semi automatic transmission. Shifting is not controlled by the 3 position switch in this mode!
-//#define SEMI_AUTOMATIC // Works for VIRTUAL_3_SPEED or real 3 speed transmission. Don't select this @ the same time as VIRTUAL_16_SPEED_SEQUENTIAL
+#define SEMI_AUTOMATIC // Works for VIRTUAL_3_SPEED or real 3 speed transmission. Don't select this @ the same time as VIRTUAL_16_SPEED_SEQUENTIAL
 
 //#define MODE1_SHIFTING The 2 speed transmission is shifted by the "Mode 1" button instead of the 3 position switch.
 // This is often used in WPL vehicles with 2 speed transmission, used as off road reducer, shifted while driving slowly in order to engage properly.
