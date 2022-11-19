@@ -73,7 +73,9 @@ float batteryVolts();
 // #define CORE_DEBUG // Don't use this!
 //#define VESC_DEBUG
 //#define FAKE_VESC_DATA // random Number for test
+#ifdef FAKE_VESC_DATA
 #define PI 3.14159265
+#endif
 // TODO = Things to clean up!
 
 //
@@ -88,7 +90,6 @@ float batteryVolts();
 #include <statusLED.h>          // https://github.com/TheDIYGuy999/statusLED <<------- required for LED control
 #include <FastLED.h>            // https://github.com/FastLED/FastLED        <<------- required for Neopixel support. Use V3.3.3
 #include <ESP32AnalogRead.h>    // https://github.com/madhephaestus/ESP32AnalogRead <<------- required for battery voltage measurement
-#include <AwesomeClickButton.h> //Handle click on a button
 // Additional headers (included)
 #include "src/curves.h"  // Nonlinear throttle curve arrays
 #include "soc/rtc_wdt.h" // for watchdog timer
@@ -248,10 +249,10 @@ uint8_t numberOfCells;
 bool batteryProtection = false;
 
 // VESC var
-#define NEUTRAL_ERPM 500.0 //  rang in -200 < 0 < 200 erpm is neutral 
+#define NEUTRAL_ERPM 600.0 //  rang in -200 < 0 < 200 erpm is neutral 
 #define NEUTRAL_PID 10 //  rang in -5 < 0 < 5 erpm is neutral 
-#define MAX_ERPM 4000 
-#define MIN_ERPM 500 
+#define MAX_ERPM 6000 
+#define MIN_ERPM 600 
 volatile float vescErpm;
 volatile float vescPid;
 volatile SwitchState vescSwitchState;
@@ -264,40 +265,29 @@ volatile AudioSource source;
 
 volatile unsigned long timelast;
 unsigned long timelastloop;
-
 //// Initiate VescUart class
 VescUart VESC;
-//// push button switch trigger houn sound on esp32 pin 0
-AwesomeClickButton soundButton(PUSH_BUTTON_PIN);
-
 // DEBUG stuff
 volatile uint8_t coreId = 99;
-
 // Our main tasks
 TaskHandle_t Task1;
-
 // Loop time (for debug)
 uint16_t loopTime;
-
 // Sampling intervals for interrupt timer (adjusted according to your sound file sampling rate)
 uint32_t maxSampleInterval = 4000000 / sampleRate;
 uint32_t minSampleInterval = 4000000 / sampleRate * 100 / MAX_RPM_PERCENTAGE;
-
 // Interrupt timer for variable sample rate playback (engine sound)
 hw_timer_t *variableTimer = NULL;
 portMUX_TYPE variableTimerMux = portMUX_INITIALIZER_UNLOCKED;
 volatile uint32_t variableTimerTicks = maxSampleInterval;
-
 // Interrupt timer for fixed sample rate playback (horn etc., playing in parallel with engine sound)
 hw_timer_t *fixedTimer = NULL;
 portMUX_TYPE fixedTimerMux = portMUX_INITIALIZER_UNLOCKED;
 volatile uint32_t fixedTimerTicks = maxSampleInterval;
-
 // Declare a mutex Semaphore Handles.
 // It will be used to ensure only only one Task is accessing this resource at any time.
 SemaphoreHandle_t xPwmSemaphore;
 SemaphoreHandle_t xRpmSemaphore;
-
 //
 // =======================================================================================================
 // INTERRUPT FOR VARIABLE SPEED PLAYBACK (Engine sound, turbo sound)
