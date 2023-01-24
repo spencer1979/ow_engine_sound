@@ -163,13 +163,16 @@ volatile boolean parkingBrakeTrigger = false;     // Trigger for air parking bra
 volatile boolean shiftingTrigger = false;         // Trigger for shifting noise
 volatile boolean hornTrigger = false;             // Trigger for horn on / off
 volatile boolean sirenTrigger = false;            // Trigger for siren  on / off
-volatile boolean sound1trigger = false;           // Trigger for sound1  on / off
+volatile boolean sound1Trigger = false;           // Trigger for sound1  on / off
 volatile boolean couplingTrigger = false;         // Trigger for trailer coupling  sound
 volatile boolean uncouplingTrigger = false;       // Trigger for trailer uncoupling  sound
 volatile boolean bucketRattleTrigger = false;     // Trigger for bucket rattling  sound
 volatile boolean indicatorSoundOn = false;        // active, if indicator bulb is on
 volatile boolean outOfFuelMessageTrigger = false; // Trigger for out of fuel message
-
+//new for float 
+volatile boolean lowVoltageTrigger = false; // Trigger for out of fuel message
+volatile boolean overSpeedTrigger = false; // Trigger for out of fuel message
+volatile boolean excuseMeTrigger = false; // Trigger for out of fuel message
 // Sound latches
 volatile boolean hornLatch = false;  // Horn latch bit
 volatile boolean sirenLatch = false; // Siren latch bit
@@ -200,6 +203,7 @@ const int16_t maxRpm = 500;       // always 500
 const int16_t minRpm = 0;         // always 0
 int32_t currentRpm = 0;           // 0 - 500 (signed required!)
 volatile uint8_t engineState = 0; // Engine state
+
 enum EngineState                  // Engine state enum
 {
   OFF,
@@ -563,6 +567,10 @@ void IRAM_ATTR fixedPlaybackTimer()
   static uint32_t curTrackRattleSample = 0;                 // Index of currently loaded track rattle sample
   static uint32_t curTireSquealSample = 0;                     // Index of currently loaded tire squeal sample
   static uint32_t curOutOfFuelSample = 0;                   // Index of currently loaded out of fuel sample
+  //new for float app
+  static uint32_t curOverSpeedSample = 0;
+  static uint32_t curLowVoltageSample = 0;  
+  static uint32_t curExcuseMeSample = 0;  
   static int32_t a, a1, a2 = 0;                             // Input signals "a" for mixer
   static int32_t b, b0, b1, b2, b3, b4, b5, b6, b7, b9 = 0; // Input signals "b" for mixer
   static int32_t c, c1, c2, c3 = 0;                         // Input signals "c" for mixer
@@ -622,7 +630,7 @@ void IRAM_ATTR fixedPlaybackTimer()
   // Group "b" (other sounds) **********************************************************************
 
   // Sound 1 "b0" ----
-  if (sound1trigger)
+  if (sound1Trigger)
   {
     fixedTimerTicks = 4000000 / sound1SampleRate;       // our fixed sampling rate
     timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // // change timer ticks, autoreload true
@@ -634,7 +642,7 @@ void IRAM_ATTR fixedPlaybackTimer()
     }
     else
     {
-      sound1trigger = false;
+      sound1Trigger = false;
     }
   }
   else
@@ -642,6 +650,75 @@ void IRAM_ATTR fixedPlaybackTimer()
     curSound1Sample = 0; // ensure, next sound will start @ first sample
     b0 = 0;
   }
+  // OverSpeed  sound triggered
+  if (overSpeedTrigger)
+  {
+    fixedTimerTicks = 4000000 / overSpeedSampleRate;       // our fixed sampling rate
+    timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // // change timer ticks, autoreload true
+
+    if (curOverSpeedSample < overSpeedSampleCount - 1)
+    {
+      b0 = (overSpeedSamples[curOverSpeedSample] * overSpeedVolumePercentage / 100);
+      curOverSpeedSample++;
+    }
+    else
+    {
+         overSpeedTrigger = false;
+    }
+  }
+  else
+  {
+    curOverSpeedSample = 0; // ensure, next sound will start @ first sample
+    b0 = 0;
+  }
+
+//low voltage sound triggered
+
+  if (lowVoltageTrigger)
+  {
+    fixedTimerTicks = 4000000 / lowVoltageSampleRate;       // our fixed sampling rate
+    timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // // change timer ticks, autoreload true
+
+    if (curLowVoltageSample < lowVoltageSampleCount - 1)
+    {
+      b0 = (lowVoltageSamples[curLowVoltageSample] * lowVoltageVolumePercentage / 100);
+      curLowVoltageSample++;
+    }
+    else
+    {
+         lowVoltageTrigger = false;
+    }
+  }
+  else
+  {
+    curLowVoltageSample = 0; // ensure, next sound will start @ first sample
+    b0 = 0;
+  }
+
+
+//Excuse me sound triggered 
+
+    if (lowVoltageTrigger)
+  {
+    fixedTimerTicks = 4000000 / excuseMeSampleRate;       // our fixed sampling rate
+    timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // // change timer ticks, autoreload true
+
+    if (curExcuseMeSample < excuseMeSampleCount - 1)
+    {
+      b0 = (excuseMeSamples[curExcuseMeSample] * excuseMeVolumePercentage / 100);
+      curExcuseMeSample++;
+    }
+    else
+    {
+       excuseMeTrigger = false;
+    }
+  }
+  else
+  {
+    curExcuseMeSample = 0; // ensure, next sound will start @ first sample
+    b0 = 0;
+  }
+
 
   // Reversing beep sound "b1" ----
   if (engineRunning && owInReverse)
@@ -920,27 +997,11 @@ void setupBattery()
 bool get_vesc_values(uint32_t loop_time)
 
 {
-  static uint32_t lastReadTime = millis();
-  if (loop_time > 0)
-  {
-    if (millis() - lastReadTime > loop_time)
-    {
-
-      return VESC.updateCustomValues();
-
-      lastReadTime = millis();
-    }
-  }
-  else
-  {
-
-    return VESC.updateCustomValues();
-
-  }
-
-#ifdef VESC_DEBUG
+  #ifdef VESC_DEBUG
   VESC.printCustomValues();
 #endif // DEBUG
+ return VESC.update();
+
 }
 
 //
@@ -979,8 +1040,8 @@ void ow_setup()
   source = SOURCE_ESP32;
 #else
   vTaskDelay(1000 / portTICK_PERIOD_MS); //wait 100mS for vesc Boot in to balance application
-  get_vesc_values(0);
-  source = (AudioSource)VESC.getVescId();
+  //get_vesc_values(0);
+  source =VESC.get_engine_sound_enable() ? SOURCE_ESP32 :SOURCE_CSR;
 #endif
   if (source == SOURCE_CSR )
   {
@@ -1015,7 +1076,7 @@ void setup()
   // Unmute Amp
   AUDIO_UNMUTE();
   // welcome sound trigger
-  sound1trigger = true;
+  sound1Trigger = true;
   // Watchdog timers need to be disabled, if task 1 is running without delay(1)
   disableCore0WDT();
   // disableCore1WDT(); // TODO leaving this one enabled is experimental!
@@ -1074,7 +1135,7 @@ void setup()
   timerAlarmWrite(fixedTimer, fixedTimerTicks, true);          // autoreload true
   timerAlarmEnable(fixedTimer);                                // enable
   // wating the welcome sound stop
-  while (sound1trigger)
+  while (sound1Trigger)
   {
     ;
   }
@@ -2120,7 +2181,7 @@ void check_mute( uint32_t time )
   static unsigned long _timer =millis();
   if (millis() - _timer > time && source == SOURCE_ESP32)
   {
-    unmute = ((engineState > 0) || sirenTrigger || dieselKnockTrigger || airBrakeTrigger || parkingBrakeTrigger || shiftingTrigger || hornTrigger || sirenTrigger || sound1trigger || couplingTrigger || uncouplingTrigger || bucketRattleTrigger || indicatorSoundOn );
+    unmute = ((engineState > 0) || sirenTrigger || dieselKnockTrigger || airBrakeTrigger || parkingBrakeTrigger || shiftingTrigger || hornTrigger || sirenTrigger || sound1Trigger || couplingTrigger || uncouplingTrigger || bucketRattleTrigger || indicatorSoundOn );
     if (unmute)
     {
 
@@ -2210,12 +2271,13 @@ void loop()
 
 #else
     // update vesc date for 5ms
-    VESC.updateCustomValues(5);
+    VESC.update();
     // check audio source
-    source = (AudioSource)VESC.getVescId();
-    vescErpm = VESC.getErpm();
-    vescPid = VESC.getPidOUtput();
-    vescSwitchState = (SwitchState)VESC.getSwitchState();
+    source = VESC.get_engine_sound_enable() ? SOURCE_ESP32 :SOURCE_CSR;
+ 
+    vescErpm = VESC.get_erpm();
+    vescPid = VESC.get_pid_output();
+    vescSwitchState = (SwitchState)VESC.get_switch_state();
 #endif
    
     if (source == SOURCE_ESP32 )

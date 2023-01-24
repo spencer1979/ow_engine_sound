@@ -60,26 +60,60 @@
 // balance state
 typedef enum
 {
-  STARTUP = 0,
-  RUN = 1,
-  RUN_TILTBACK_DUTY = 2,
-  RUN_TILTBACK_HIGH_VOLTAGE = 3,
-  RUN_TILTBACK_LOW_VOLTAGE = 4,
-  FAULT_ANGLE_PITCH = 6,
-  FAULT_ANGLE_ROLL = 7,
-  FAULT_SWITCH_HALF = 8,
-  FAULT_SWITCH_FULL = 9,
-  FAULT_DUTY = 10,
-  FAULT_STARTUP = 11,
+	FLOAT_STARTUP = 0,
+	FLOAT_RUNNING = 1,
+	FLOAT_RUNNING_TILTBACK = 2,
+	FLOAT_RUNNING_WHEELSLIP = 3,
+	FLOAT_RUNNING_UPSIDEDOWN = 4,
+	FLOAT_FAULT_ANGLE_PITCH = 5,
+	FLOAT_FAULT_ANGLE_ROLL = 6,
+	FLOAT_FAULT_SWITCH_HALF = 7,
+	FLOAT_FAULT_SWITCH_FULL = 8,
+	FLOAT_FAULT_STARTUP = 9,
+	FLOAT_FAULT_REVERSE = 10,
+	FLOAT_FAULT_QUICKSTOP = 11
+} FloatState;
 
-} BalanceState;
 // switch state
 typedef enum
 {
-  SWITCH_OFF = 0,
-  SWITCH_HALF,
-  SWITCH_ON
+	SWITCH_OFF = 0,
+	SWITCH_HALF,
+	SWITCH_ON
 } SwitchState;
+
+/**light mode*/
+typedef enum
+{
+	FLOAT_LIGHT_OFF = 0,
+	FLOAT_LIGHT_FLASH,
+	FLOAT_LIGHT_FULL_ON
+} FLOAT_LIGHT_MODE;
+
+
+struct fw_version
+{
+  uint8_t major ,minor;
+};
+
+typedef enum
+{
+  SOUND_HORN,
+  SOUND_EXCUSE_ME,
+  SOUND_POLICE,
+} soundType;
+    /**idle warning time */
+typedef enum
+{
+  FLOAT_IDLE_WARNING_TIME_DISABLE = 0,
+  FLOAT_IDLE_WARNING_TIME_1M,
+  FLOAT_IDLE_WARNING_TIME_5M,
+  FLOAT_IDLE_WARNING_TIME_10M,
+  FLOAT_IDLE_WARNING_TIME_30M,
+  FLOAT_IDLE_WARNING_TIME_60M,
+  FLOAT_IDLE_WARNING_TIME_120M
+
+} FLOAT_IDLE_TIME;
 
 //audio source
 //using VESC controll id to get source 
@@ -88,4 +122,13 @@ typedef enum
   SOURCE_CSR,
   SOURCE_ESP32,
 } AudioSource;
+//additional sound setting 
+volatile int overSpeedVolumePercentage=100;
+#include "vehicles/sounds/overspeed.h"
+volatile int lowVoltageVolumePercentage=100;
+#include "vehicles/sounds/lowVoltage.h"
+volatile int excuseMeVolumePercentage=100;
+#include "vehicles/sounds/excuse_woman.h"
+
+
 #endif

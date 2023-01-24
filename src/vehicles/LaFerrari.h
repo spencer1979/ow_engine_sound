@@ -96,8 +96,8 @@ volatile int hornVolumePercentage = 100; // Adjust the horn volume (usually = 10
 
 // Choose the siren / additional horn sound (uncomment the one you want) --------
 volatile int sirenVolumePercentage = 100; // Adjust the siren volume (usually = 100%)
-#include "sounds/sirenDummy.h" // If you don't want siren sound
-//#include "sounds/UsPoliceSiren.h" // US Police siren
+//#include "sounds/sirenDummy.h" // If you don't want siren sound
+#include "sounds/UsPoliceSiren.h" // US Police siren
 //#include "sounds/FireTruckAirSiren.h" // US fire truck air siren (King Hauler)
 //#include "sounds/FeuerwehrMartinshorn.h" // European Feuerwehr Martinshorn
 //#include "sounds/IrishFireEngineHorn.h" // Irish fire truck horn
@@ -126,7 +126,7 @@ volatile int shiftingVolumePercentage = 200; // Adjust the shifting volume (usua
 //#include "sounds/ClunkingGearShifting.h" // Manual clunking shifting sound
 
 // Choose the additional "sound1" (uncomment the one you want) --------
-volatile int sound1VolumePercentage = 70; // Adjust the sound1 volume (usually = 100%)
+volatile int sound1VolumePercentage = 150; // Adjust the sound1 volume (usually = 100%)
 //#include "sounds/EMDLocomotiveBell.h" // American EMD locomotive bell
 //#include "sounds/007JamesBond.h" // James Bond melody
 //#include "sounds/M2Fire.h" // M2 salve

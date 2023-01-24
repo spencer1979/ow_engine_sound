@@ -1,6 +1,6 @@
-const unsigned int sound1SampleRate = 22050;
-const unsigned int sound1SampleCount = 32774;
-const signed char sound1Samples[] = {//0
+const unsigned int excuseMeSampleRate = 22050;
+const unsigned int excuseMeSampleCount = 32774;
+const signed char excuseMeSamples[] = {//0
 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //16
 0, 0, 0, 0, -1, 0, -1, 0, -1, -1, 0, -1, 0, 0, -1, 0, //32
 -1, 0, -1, 0, 0, -1, 0, 0, -1, 0, -1, 0, -1, 0, -1, 0, //48
