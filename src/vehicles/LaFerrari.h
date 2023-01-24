@@ -131,7 +131,7 @@ volatile int sound1VolumePercentage = 150; // Adjust the sound1 volume (usually 
 //#include "sounds/007JamesBond.h" // James Bond melody
 //#include "sounds/M2Fire.h" // M2 salve
 //#include "sounds/GlenCanyon.h" // Glen Canyon country song for truckers ;-)
-#include "sounds/welcome.h" // opening and closing the door
+//#include "sounds/welcome.h" // opening and closing the door
 
 // Choose the reversing beep sound --------
 volatile int reversingVolumePercentage = 90; // Adjust the reversing sound volume (usually = 70%)

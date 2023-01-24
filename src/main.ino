@@ -170,9 +170,11 @@ volatile boolean bucketRattleTrigger = false;     // Trigger for bucket rattling
 volatile boolean indicatorSoundOn = false;        // active, if indicator bulb is on
 volatile boolean outOfFuelMessageTrigger = false; // Trigger for out of fuel message
 //new for float 
-volatile boolean lowVoltageTrigger = false; // Trigger for out of fuel message
-volatile boolean overSpeedTrigger = false; // Trigger for out of fuel message
-volatile boolean excuseMeTrigger = false; // Trigger for out of fuel message
+volatile boolean lowVoltageTrigger = false; // Trigger for low voltage message
+volatile boolean overSpeedTrigger = false; // Trigger for over speed message
+volatile boolean excuseMeTrigger = false; // Trigger for excuse me message
+volatile boolean startUpWarningTrigger = false; // Trigger for start up safty warning message
+volatile boolean vescNotConnectTrigger =false ; //Trigger for vesc not onnection message
 // Sound latches
 volatile boolean hornLatch = false;  // Horn latch bit
 volatile boolean sirenLatch = false; // Siren latch bit
@@ -251,7 +253,7 @@ float batteryCutoffvoltage;
 float batteryVoltage;
 uint8_t numberOfCells;
 bool batteryProtection = false;
-
+bool isVescConnect=false;
 // VESC var
 #define NEUTRAL_ERPM 600.0 //  rang in -200 < 0 < 200 erpm is neutral 
 #define NEUTRAL_PID 10 //  rang in -5 < 0 < 5 erpm is neutral 
@@ -259,7 +261,7 @@ bool batteryProtection = false;
 #define MIN_ERPM 600 
 volatile float vescErpm;
 volatile float vescPid;
-volatile SwitchState vescSwitchState;
+volatile FloatSwitchState vescSwitchState;
 const uint32_t engineOffDelay = 5000; // engine off delay
 unsigned long engineOffTimer ;
 unsigned long sourceCheckTimer ; //check the vesc id , 0 is ble audio , 1 is engine sound.
@@ -571,8 +573,12 @@ void IRAM_ATTR fixedPlaybackTimer()
   static uint32_t curOverSpeedSample = 0;
   static uint32_t curLowVoltageSample = 0;  
   static uint32_t curExcuseMeSample = 0;  
+  static uint32_t curStartUpWarningSample=0;
+  static uint32_t CurVescNotConnectSample=0;
+  static uint32_t curVescNotConnectSample=0;
+  //
   static int32_t a, a1, a2 = 0;                             // Input signals "a" for mixer
-  static int32_t b, b0, b1, b2, b3, b4, b5, b6, b7, b9 = 0; // Input signals "b" for mixer
+  static int32_t b, b0, b1, b2, b3, b4, b5, b6, b7,b8, b9 ,b10 ,b11= 0; // Input signals "b" for mixer
   static int32_t c, c1, c2, c3 = 0;                         // Input signals "c" for mixer
   static int32_t d, d1, d2 = 0;                             // Input signals "d" for mixer
   static boolean knockSilent = 0;                           // This knock will be more silent
@@ -628,98 +634,28 @@ void IRAM_ATTR fixedPlaybackTimer()
   }
 
   // Group "b" (other sounds) **********************************************************************
-
-  // Sound 1 "b0" ----
-  if (sound1Trigger)
+  //b0 Start up warning sound 
+  if (startUpWarningTrigger)
   {
-    fixedTimerTicks = 4000000 / sound1SampleRate;       // our fixed sampling rate
-    timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // // change timer ticks, autoreload true
-
-    if (curSound1Sample < sound1SampleCount - 1)
+    fixedTimerTicks = 4000000 / startUpWarningSampleRate;       // our fixed sampling rate
+    timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // change timer ticks, autoreload true
+   
+    if (curStartUpWarningSample < startUpWarningSampleCount - 1)
     {
-      b0 = (sound1Samples[curSound1Sample] * sound1VolumePercentage / 100);
-      curSound1Sample++;
+      b0 = (startUpWarningSamples[curStartUpWarningSample] * startUpWarningPercentage / 100);
+      curStartUpWarningSample++;
     }
     else
     {
-      sound1Trigger = false;
+      startUpWarningTrigger = false;
     }
   }
   else
   {
-    curSound1Sample = 0; // ensure, next sound will start @ first sample
+    curStartUpWarningSample = 0; // ensure, next sound will start @ first sample
     b0 = 0;
   }
-  // OverSpeed  sound triggered
-  if (overSpeedTrigger)
-  {
-    fixedTimerTicks = 4000000 / overSpeedSampleRate;       // our fixed sampling rate
-    timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // // change timer ticks, autoreload true
-
-    if (curOverSpeedSample < overSpeedSampleCount - 1)
-    {
-      b0 = (overSpeedSamples[curOverSpeedSample] * overSpeedVolumePercentage / 100);
-      curOverSpeedSample++;
-    }
-    else
-    {
-         overSpeedTrigger = false;
-    }
-  }
-  else
-  {
-    curOverSpeedSample = 0; // ensure, next sound will start @ first sample
-    b0 = 0;
-  }
-
-//low voltage sound triggered
-
-  if (lowVoltageTrigger)
-  {
-    fixedTimerTicks = 4000000 / lowVoltageSampleRate;       // our fixed sampling rate
-    timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // // change timer ticks, autoreload true
-
-    if (curLowVoltageSample < lowVoltageSampleCount - 1)
-    {
-      b0 = (lowVoltageSamples[curLowVoltageSample] * lowVoltageVolumePercentage / 100);
-      curLowVoltageSample++;
-    }
-    else
-    {
-         lowVoltageTrigger = false;
-    }
-  }
-  else
-  {
-    curLowVoltageSample = 0; // ensure, next sound will start @ first sample
-    b0 = 0;
-  }
-
-
-//Excuse me sound triggered 
-
-    if (lowVoltageTrigger)
-  {
-    fixedTimerTicks = 4000000 / excuseMeSampleRate;       // our fixed sampling rate
-    timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // // change timer ticks, autoreload true
-
-    if (curExcuseMeSample < excuseMeSampleCount - 1)
-    {
-      b0 = (excuseMeSamples[curExcuseMeSample] * excuseMeVolumePercentage / 100);
-      curExcuseMeSample++;
-    }
-    else
-    {
-       excuseMeTrigger = false;
-    }
-  }
-  else
-  {
-    curExcuseMeSample = 0; // ensure, next sound will start @ first sample
-    b0 = 0;
-  }
-
-
+  
   // Reversing beep sound "b1" ----
   if (engineRunning && owInReverse)
   {
@@ -919,6 +855,98 @@ void IRAM_ATTR fixedPlaybackTimer()
       b7 = b7 * dieselKnockAdaptiveVolumePercentage / 75;
   }
 
+
+// sound b8 
+// low Voltage sound 
+if (lowVoltageTrigger)
+  {
+    fixedTimerTicks = 4000000 / lowVoltageSampleRate;       // our fixed sampling rate
+    timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // change timer ticks, autoreload true
+   
+    if (curLowVoltageSample < lowVoltageSampleCount - 1)
+    {
+      b8 = (lowVoltageSamples[curLowVoltageSample] * lowVoltageVolumePercentage / 100);
+      curLowVoltageSample++;
+    }
+    else
+    {
+      lowVoltageTrigger = false;
+    }
+  }
+  else
+  {
+    curLowVoltageSample = 0; // ensure, next sound will start @ first sample
+    b8 = 0;
+  }
+  
+
+//sound b9
+//over speed 
+if (overSpeedTrigger)
+  {
+    fixedTimerTicks = 4000000 / overSpeedSampleRate;       // our fixed sampling rate
+    timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // change timer ticks, autoreload true
+   
+    if (curOverSpeedSample < overSpeedSampleCount - 1)
+    {
+      b9 = (overSpeedSamples[curOverSpeedSample] * overSpeedVolumePercentage / 100);
+      curOverSpeedSample++;
+    }
+    else
+    {
+      overSpeedTrigger = false;
+    }
+  }
+  else
+  {
+    curOverSpeedSample = 0; // ensure, next sound will start @ first sample
+    b9 = 0;
+  }
+//sound b10
+// excuse me 
+if (excuseMeTrigger)
+  {
+    fixedTimerTicks = 4000000 / excuseMeSampleRate;       // our fixed sampling rate
+    timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // change timer ticks, autoreload true
+   
+    if (curExcuseMeSample < excuseMeSampleCount - 1)
+    {
+      b10 = (excuseMeSamples[curExcuseMeSample] * excuseMeVolumePercentage / 100);
+      curExcuseMeSample++;
+    }
+    else
+    {
+      excuseMeTrigger = false;
+    }
+  }
+  else
+  {
+    curExcuseMeSample = 0; // ensure, next sound will start @ first sample
+    b10 = 0;
+  }
+//sound b11
+// vesc not connection  
+if (vescNotConnectTrigger)
+  {
+    fixedTimerTicks = 4000000 / vescNotConnectSampleRate;       // our fixed sampling rate
+    timerAlarmWrite(fixedTimer, fixedTimerTicks, true); // change timer ticks, autoreload true
+   
+    if (curVescNotConnectSample < vescNotConnectSampleRate - 1)
+    {
+      b11 = (vescNotConnectSamples[curVescNotConnectSample] * vescNotConnectVolumePercentage / 100);
+      curVescNotConnectSample++;
+    }
+    else
+    {
+      vescNotConnectTrigger = false;
+    }
+  }
+  else
+  {
+    curVescNotConnectSample = 0; // ensure, next sound will start @ first sample
+    b11 = 0;
+  }
+    
   // Group "d" (additional sounds) **********************************************************************
 
 #if defined TIRE_SQUEAL
@@ -959,7 +987,7 @@ void IRAM_ATTR fixedPlaybackTimer()
   // Mixing sounds together **********************************************************************
   a = a1 + a2; // Horn & siren
   // if (a < 2 && a > -2) a = 0; // Remove noise floor TODO, experimental
-  b = b0 * 5 + b1 + b2 / 2 + b3 + b4 + b5 + b6 + b7; // b8 + b9;  Other sounds
+  b = b0 * 5 + b1 + b2 / 2 + b3 + b4 + b5 + b6 + b7 + b8*5 + b9*5 + b10*5 + b11*5; // Other sounds
   c = c1 + c2 + c3;                                  // Excavator sounds
   d = d1 + d2;                                       // Additional sounds
 
@@ -983,35 +1011,21 @@ void setupBattery()
 {
 }
 
-//
-// =======================================================================================================
-// MAIN ARDUINO SETUP (1x during startup)
-// =======================================================================================================
-//
-//
-// =======================================================================================================
-// Get the vesc main data
-// =======================================================================================================
-//
 
-bool get_vesc_values(uint32_t loop_time)
-
-{
-  #ifdef VESC_DEBUG
-  VESC.printCustomValues();
-#endif // DEBUG
- return VESC.update();
-
-}
 
 //
 //===================================================== ===================================================== ===
 // initialize one wheel
 //===================================================== ===================================================== ===
 //
-void ow_setup()
-{
 
+void initIO()
+{
+ 
+  // set pin mode
+  pinMode(CSR_EN_PIN, OUTPUT);
+  pinMode(AUDIO_SOURCE_PIN, OUTPUT);
+  pinMode(PAM_MUTE_PIN, OUTPUT);
   // Neopixel setup
   FastLED.addLeds<NEOPIXEL, RGB_LED1_DATA_PIN>(rgb1LEDs, RGB_LED1_COUNT);
   FastLED.addLeds<NEOPIXEL, RGB_LED2_DATA_PIN>(rgb2LEDs, RGB_LED2_COUNT);
@@ -1022,126 +1036,119 @@ void ow_setup()
   headLight.begin(LED1_PIN, 1, 20000); // Timer 1, 20kHz
 #endif
   tailLight.begin(LED3_PIN, 2, 20000); // Timer 2, 20kHz
+  SET_CSR_POWER_OFF();
+  SET_AUDIO_MUTE();
+}
+
+void ow_setup()
+{
+  initIO();
+
+  Serial.begin(115200); // USB serial (for DEBUG) Mode, Rx pin (99 = not used), Tx pin
   // VESC serial
   Serial2.begin(115200, SERIAL_8N1, ESP_VESC_TX_PIN, ESP_VESC_RX_PIN);
   // wait serial init ..
-  while (!Serial2)
-  {
-    ;
-  }
+  while (!Serial2) {;}
 #ifdef VESC_DEBUG
   VESC.setDebugPort(&Serial);
 #endif
+
   VESC.setSerialPort(&Serial2);
   // delay 100ms
   vTaskDelay(100 / portTICK_PERIOD_MS);
 
 #ifdef FAKE_VESC_DATA
-  source = SOURCE_ESP32;
+  source = AUDIO_SOURCE_ESP32;
 #else
-  vTaskDelay(1000 / portTICK_PERIOD_MS); //wait 100mS for vesc Boot in to balance application
-  //get_vesc_values(0);
-  source =VESC.get_engine_sound_enable() ? SOURCE_ESP32 :SOURCE_CSR;
-#endif
-  if (source == SOURCE_CSR )
-  {
-    AUDIO_MUTE();
-    CSR_POWER_ON();
-    AUDIO_SOURCE_CSR()
-    vTaskDelay(300 / portTICK_PERIOD_MS);
-    AUDIO_UNMUTE();
-  }
-  else if (source == SOURCE_ESP32)
-  {
-    AUDIO_MUTE();
-    CSR_POWER_OFF();
-    AUDIO_SOURCE_ESP()
-    vTaskDelay(300 / portTICK_PERIOD_MS);
-    AUDIO_UNMUTE();
-  }
-  engineOn=false;
+
+unsigned long wait_time=millis()+5000;
+
+while ( millis() < wait_time )
+{
+   if (VESC.get_fw_version() >=6 )  //check vesc fw version , if not connect will get 0.0 
+   {
+    Serial.printf(" Vesc version : %.2f" , VESC.get_fw_version());
+    isVescConnect=true;
+    break;
+   } 
+
 }
 
-void setup()
-{   
-  Serial.begin(115200); // USB serial (for DEBUG) Mode, Rx pin (99 = not used), Tx pin
-  // set pin mode
-  pinMode(CSR_EN_PIN, OUTPUT);
-  pinMode(AUDIO_SOURCE_PIN, OUTPUT);
-  pinMode(PAM_MUTE_PIN, OUTPUT);
-  // csr8645 off
-  CSR_POWER_OFF();
-  // sound source for welcome sound
-  AUDIO_SOURCE_ESP();
-  // Unmute Amp
-  AUDIO_UNMUTE();
-  // welcome sound trigger
-  sound1Trigger = true;
-  // Watchdog timers need to be disabled, if task 1 is running without delay(1)
-  disableCore0WDT();
-  // disableCore1WDT(); // TODO leaving this one enabled is experimental!
-  // Setup RTC (Real Time Clock) watchdog
-  //rtc_wdt_protect_off(); // Disable RTC WDT write protection
-  //rtc_wdt_set_length_of_reset_signal(RTC_WDT_SYS_RESET_SIG, RTC_WDT_LENGTH_3_2us);
-  //rtc_wdt_set_stage(RTC_WDT_STAGE0, RTC_WDT_STAGE_ACTION_RESET_SYSTEM);
-  //rtc_wdt_set_time(RTC_WDT_STAGE0, 10000); // set 10s timeout
-  //rtc_wdt_enable();                        // Start the RTC WDT timer
-  // rtc_wdt_disable();            // Disable the RTC WDT timer
-  //rtc_wdt_protect_on(); // Enable RTC WDT write protection
-  // Serial setup
-
-  // Semaphores are useful to stop a Task proceeding, where it should be paused to wait,
-  // because it is sharing a resource, such as the PWM variable.
-  // Semaphores should only be used whilst the scheduler is running, but we can set it up here.
-  if (xPwmSemaphore == NULL) // Check to confirm that the PWM Semaphore has not already been created.
-  {
-    xPwmSemaphore = xSemaphoreCreateMutex(); // Create a mutex semaphore we will use to manage variable access
-    if ((xPwmSemaphore) != NULL)
-      xSemaphoreGive((xPwmSemaphore)); // Make the PWM variable available for use, by "Giving" the Semaphore.
-  }
-
-  if (xRpmSemaphore == NULL) // Check to confirm that the RPM Semaphore has not already been created.
-  {
-    xRpmSemaphore = xSemaphoreCreateMutex(); // Create a mutex semaphore we will use to manage variable access
-    if ((xRpmSemaphore) != NULL)
-      xSemaphoreGive((xRpmSemaphore)); // Make the RPM variable available for use, by "Giving" the Semaphore.
-  }
-
-  // Refresh sample intervals (important, because MAX_RPM_PERCENTAGE was probably changed above)
-  maxSampleInterval = 4000000 / sampleRate;
-  minSampleInterval = 4000000 / sampleRate * 100 / MAX_RPM_PERCENTAGE;
-
-  // Task 1 setup (running on core 0)
-  TaskHandle_t Task1;
-  // create a task that will be executed in the Task1code() function, with priority 1 and executed on core 0
-  xTaskCreatePinnedToCore(
-      Task1code, // Task function
-      "Task1",   // name of task
-      8192,      // Stack size of task (8192)
-      NULL,      // parameter of the task
-      1,         // priority of the task (1 = low, 3 = medium, 5 = highest)
-      &Task1,    // Task handle to keep track of created task
-      0);        // pin task to core 0
-
-  // Interrupt timer for variable sample rate playback
-  variableTimer = timerBegin(0, 20, true);                           // timer 0, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 20 -> 250 ns = 0.25 us, countUp
-  timerAttachInterrupt(variableTimer, &variablePlaybackTimer, true); // edge (not level) triggered
-  timerAlarmWrite(variableTimer, variableTimerTicks, true);          // autoreload true
-  timerAlarmEnable(variableTimer);                                   // enable
-
-  // Interrupt timer for fixed sample rate playback
-  fixedTimer = timerBegin(1, 20, true);                        // timer 1, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 20 -> 250 ns = 0.25 us, countUp
-  timerAttachInterrupt(fixedTimer, &fixedPlaybackTimer, true); // edge (not level) triggered
-  timerAlarmWrite(fixedTimer, fixedTimerTicks, true);          // autoreload true
-  timerAlarmEnable(fixedTimer);                                // enable
-  // wating the welcome sound stop
-  while (sound1Trigger)
-  {
+if (!isVescConnect)
+{
+   Serial.printf("Vesc not connect! ");
+   SET_AUDIO_SOURCE_ESP();
+    SET_AUDIO_UNMUTE();
+   vescNotConnectTrigger = true;
+   while (vescNotConnectTrigger)
+   {
     ;
-  }
-  // setup for wheel
-  ow_setup();
+   }
+   vTaskDelay(500 / portTICK_PERIOD_MS);
+   
+   source = AUDIO_SOURCE_CSR;
 }
+else
+{   Serial.printf("Vesc connect! ");
+   if (VESC.advancedUpdate()) // to get advanced data
+   { Serial.printf("VESC advData update");
+    // Check if the warning sound should be activated
+    if (VESC.get_adv_startup_safety_warning())
+    {
+        SET_AUDIO_SOURCE_ESP();       // switch audio source to esp32
+        SET_AUDIO_UNMUTE();           // unmute
+        startUpWarningTrigger = true; // Turn on the startup warning sound
+        while (startUpWarningTrigger)
+        {
+          ;
+        }                   // Wait for the sound to end
+        SET_AUDIO_UNMUTE(); // mute
+    }
+    // Check if the engine sound is enabled
+    if (VESC.get_adv_engine_sound_enable())
+    {
+
+        source = AUDIO_SOURCE_ESP32;
+        masterVolume = VESC.get_adv_engine_sound_volume();
+        Serial.printf("masterVolume = %u \r\n", masterVolume);
+    }
+    else
+    {
+        source = AUDIO_SOURCE_CSR;
+        masterVolume = 0;
+    }
+   }
+   else
+   {Serial.printf("VESC advData not update");
+    source = AUDIO_SOURCE_CSR;
+    masterVolume = 0;
+   }
+}
+
+#endif
+
+  if (source == AUDIO_SOURCE_CSR )
+  { 
+    SET_AUDIO_MUTE();
+    SET_CSR_POWER_ON();
+    SET_AUDIO_SOURCE_CSR();
+    // delay 100ms
+    vTaskDelay(50 / portTICK_PERIOD_MS);
+    SET_AUDIO_UNMUTE();
+  }
+  else if (source == AUDIO_SOURCE_ESP32)
+  {
+    SET_AUDIO_MUTE();
+    SET_CSR_POWER_OFF();
+    SET_AUDIO_SOURCE_ESP();
+    // delay 100ms
+    vTaskDelay(50 / portTICK_PERIOD_MS);
+    SET_AUDIO_UNMUTE();
+    engineOn=false;
+  }
+ 
+}
+
 
 //
 // =======================================================================================================
@@ -1994,92 +2001,7 @@ unsigned long loopDuration()
 
 void triggerHorn()
 {
-
-  //   if (!winchEnabled && !unlock5thWheel && !hazard) { // Horn & siren control mode *************
-  //     winchPull = false;
-  //     winchRelease = false;
-  //     legsUp = false;
-  //     legsDown = false;
-  //     rampsUp = false;
-  //     rampsDown = false;
-
-  //     // detect horn trigger ( impulse length > 1900us) -------------
-  //     if (pulseWidth[4] > 1900 && pulseWidth[4] < pulseMaxLimit[4]) {
-  //       hornTrigger = true;
-  //       hornLatch = true;
-  //     }
-  //     else {
-  //       hornTrigger = false;
-  //     }
-
-  // #if not defined EXCAVATOR_MODE
-  // #ifndef NO_SIREN
-  //     // detect siren trigger ( impulse length < 1100us) ----------
-  //     if (pulseWidth[4] < 1100 && pulseWidth[4] > pulseMinLimit[4]) {
-  //       sirenTrigger = true;
-  //       sirenLatch = true;
-  //     }
-  //     else {
-  //       sirenTrigger = false;
-  //     }
-  // #endif
-  // #endif
-
-  //     // detect bluelight trigger ( impulse length < 1300us) ----------
-  //     static uint32_t bluelightOffDelay = millis();
-  //     if ((pulseWidth[4] < 1300 && pulseWidth[4] > pulseMinLimit[4]) || sirenLatch) {
-  //       bluelightOffDelay = millis();
-  //       blueLightTrigger = true;
-  //     }
-  //     if (millis() - bluelightOffDelay > 50)  { // Switch off delay
-  //       blueLightTrigger = false;
-  //     }
-  //   }
-
-  //   else if (unlock5thWheel) { // Trailer leg control mode *************************************
-  //     winchPull = false;
-  //     winchRelease = false;
-  //     rampsUp = false;
-  //     rampsDown = false;
-
-  //     // legs down ( impulse length > 1900us) -------------
-  //     if (pulseWidth[4] > 1900 && pulseWidth[4] < pulseMaxLimit[4]) legsDown = true;
-  //     else legsDown = false;
-
-  //     // legs up ( impulse length < 1100us) -------------
-  //     if (pulseWidth[4] < 1100 && pulseWidth[4] > pulseMinLimit[4]) legsUp = true;
-  //     else legsUp = false;
-  //   }
-
-  //   else if (hazard) { // Trailer ramps control mode ***************************************
-  //     winchPull = false;
-  //     winchRelease = false;
-  //     legsUp = false;
-  //     legsDown = false;
-
-  //     // ramps down ( impulse length > 1900us) -------------
-  //     if (pulseWidth[4] > 1900 && pulseWidth[4] < pulseMaxLimit[4]) rampsDown = true;
-  //     else rampsDown = false;
-
-  //     // ramps up ( impulse length < 1100us) -------------
-  //     if (pulseWidth[4] < 1100 && pulseWidth[4] > pulseMinLimit[4]) rampsUp = true;
-  //     else rampsUp = false;
-  //   }
-
-  //   else { // Winch control mode *****************************************************************
-  //     legsUp = false;
-  //     legsDown = false;
-  //     rampsUp = false;
-  //     rampsDown = false;
-
-  //     // pull winch ( impulse length > 1900us) -------------
-  //     if (pulseWidth[4] > 1900 && pulseWidth[4] < pulseMaxLimit[4]) winchPull = true;
-  //     else winchPull = false;
-
-  //     // release winch ( impulse length < 1100us) -------------
-  //     if (pulseWidth[4] < 1100 && pulseWidth[4] > pulseMinLimit[4]) winchRelease = true;
-  //     else winchRelease = false;
-  //   }
+   
 }
 
 //
@@ -2179,18 +2101,18 @@ void check_mute( uint32_t time )
 { 
   static bool unmute;
   static unsigned long _timer =millis();
-  if (millis() - _timer > time && source == SOURCE_ESP32)
+  if (millis() - _timer > time && source == AUDIO_SOURCE_ESP32)
   {
     unmute = ((engineState > 0) || sirenTrigger || dieselKnockTrigger || airBrakeTrigger || parkingBrakeTrigger || shiftingTrigger || hornTrigger || sirenTrigger || sound1Trigger || couplingTrigger || uncouplingTrigger || bucketRattleTrigger || indicatorSoundOn );
     if (unmute)
     {
 
-      AUDIO_UNMUTE();
+      SET_AUDIO_UNMUTE();
     }
     else
     {
 
-      AUDIO_MUTE();
+      SET_AUDIO_MUTE();
     }
     _timer = millis();
   }
@@ -2238,7 +2160,7 @@ void get_fake_data()
   static unsigned long fakeTimer = millis();
   if (millis() - fakeTimer > 250)
   {
-    vescSwitchState=SWITCH_ON;
+    vescSwitchState=FLOAT_SWITCH_OFF;
     vescErpm=MAX_ERPM*sin(val*angle);
     Serial.print("Fake Vesc Erpm :");
     Serial.println( vescErpm  );
@@ -2250,6 +2172,85 @@ void get_fake_data()
   }
 }
 
+
+//Setup 
+void setup()
+{   
+  
+
+  // Watchdog timers need to be disabled, if task 1 is running without delay(1)
+  disableCore0WDT();
+  // disableCore1WDT(); // TODO leaving this one enabled is experimental!
+  // Setup RTC (Real Time Clock) watchdog
+  //rtc_wdt_protect_off(); // Disable RTC WDT write protection
+  //rtc_wdt_set_length_of_reset_signal(RTC_WDT_SYS_RESET_SIG, RTC_WDT_LENGTH_3_2us);
+  //rtc_wdt_set_stage(RTC_WDT_STAGE0, RTC_WDT_STAGE_ACTION_RESET_SYSTEM);
+  //rtc_wdt_set_time(RTC_WDT_STAGE0, 10000); // set 10s timeout
+  //rtc_wdt_enable();                        // Start the RTC WDT timer
+  // rtc_wdt_disable();            // Disable the RTC WDT timer
+  //rtc_wdt_protect_on(); // Enable RTC WDT write protection
+  // Serial setup
+
+  // Semaphores are useful to stop a Task proceeding, where it should be paused to wait,
+  // because it is sharing a resource, such as the PWM variable.
+  // Semaphores should only be used whilst the scheduler is running, but we can set it up here.
+  if (xPwmSemaphore == NULL) // Check to confirm that the PWM Semaphore has not already been created.
+  {
+    xPwmSemaphore = xSemaphoreCreateMutex(); // Create a mutex semaphore we will use to manage variable access
+    if ((xPwmSemaphore) != NULL)
+      xSemaphoreGive((xPwmSemaphore)); // Make the PWM variable available for use, by "Giving" the Semaphore.
+  }
+
+  if (xRpmSemaphore == NULL) // Check to confirm that the RPM Semaphore has not already been created.
+  {
+    xRpmSemaphore = xSemaphoreCreateMutex(); // Create a mutex semaphore we will use to manage variable access
+    if ((xRpmSemaphore) != NULL)
+      xSemaphoreGive((xRpmSemaphore)); // Make the RPM variable available for use, by "Giving" the Semaphore.
+  }
+
+  // Refresh sample intervals (important, because MAX_RPM_PERCENTAGE was probably changed above)
+  maxSampleInterval = 4000000 / sampleRate;
+  minSampleInterval = 4000000 / sampleRate * 100 / MAX_RPM_PERCENTAGE;
+
+  // Task 1 setup (running on core 0)
+  TaskHandle_t Task1;
+  // task 2 is check advanced data
+  TaskHandle_t Task2; 
+  // create a task that will be executed in the Task1code() function, with priority 1 and executed on core 0
+  xTaskCreatePinnedToCore(
+      Task1code, // Task function
+      "Task1",   // name of task
+      8192,      // Stack size of task (8192)
+      NULL,      // parameter of the task
+      1,         // priority of the task (1 = low, 3 = medium, 5 = highest)
+      &Task1,    // Task handle to keep track of created task
+      0);        // pin task to core 0
+
+xTaskCreate(
+                    Task2code,          /* Task function. */
+                    "Task2",        /* String with name of task. */
+                    2048,            /* Stack size in bytes. */
+                    NULL,             /* Parameter passed as input of the task */
+                    1,                /* Priority of the task. */
+                    &Task2);            /* Task handle. */
+
+  // Interrupt timer for variable sample rate playback
+  variableTimer = timerBegin(0, 20, true);                           // timer 0, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 20 -> 250 ns = 0.25 us, countUp
+  timerAttachInterrupt(variableTimer, &variablePlaybackTimer, true); // edge (not level) triggered
+  timerAlarmWrite(variableTimer, variableTimerTicks, true);          // autoreload true
+  timerAlarmEnable(variableTimer);                                   // enable
+
+  // Interrupt timer for fixed sample rate playback
+  fixedTimer = timerBegin(1, 20, true);                        // timer 1, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 20 -> 250 ns = 0.25 us, countUp
+  timerAttachInterrupt(fixedTimer, &fixedPlaybackTimer, true); // edge (not level) triggered
+  timerAlarmWrite(fixedTimer, fixedTimerTicks, true);          // autoreload true
+  timerAlarmEnable(fixedTimer);                                // enable
+
+  // setup for wheel
+    ow_setup();
+}
+
+
 // =======================================================================================================
 // MAIN LOOP, RUNNING ON CORE 1
 // =======================================================================================================
@@ -2258,10 +2259,7 @@ void get_fake_data()
 void loop()
 { 
 
-  // Horn triggering
-  triggerHorn();
-  // Indicator (turn signal) triggering
-  triggerIndicators();
+  
 
   if (xSemaphoreTake(xRpmSemaphore, portMAX_DELAY))
   {
@@ -2270,25 +2268,26 @@ void loop()
     get_fake_data(); // generate sin of erpm data and cos of pid data.
 
 #else
-    // update vesc date for 5ms
+    //obtain the necessary information
     VESC.update();
-    // check audio source
-    source = VESC.get_engine_sound_enable() ? SOURCE_ESP32 :SOURCE_CSR;
+
+    // confirmation sound source
+    source = VESC.get_adv_engine_sound_enable() ? AUDIO_SOURCE_ESP32 :AUDIO_SOURCE_CSR;
  
     vescErpm = VESC.get_erpm();
     vescPid = VESC.get_pid_output();
-    vescSwitchState = (SwitchState)VESC.get_switch_state();
+    vescSwitchState = (FloatSwitchState)VESC.get_switch_state();
 #endif
    
-    if (source == SOURCE_ESP32 )
+    if (source == AUDIO_SOURCE_ESP32 )
     {
-       CSR_POWER_OFF();
-      AUDIO_SOURCE_ESP();
+       SET_CSR_POWER_OFF();
+      SET_AUDIO_SOURCE_ESP();
 
-      if (vescSwitchState == SWITCH_ON)
+      if (vescSwitchState == FLOAT_SWITCH_ON )
       {
         engineOn = true;
-        AUDIO_UNMUTE();
+        SET_AUDIO_UNMUTE();
         engineOffTimer = millis();
       }
       else
@@ -2303,9 +2302,9 @@ void loop()
     }  else {
       // turn on csr
       engineOn =false; 
-      CSR_POWER_ON();
-      AUDIO_SOURCE_CSR()
-      AUDIO_UNMUTE();
+      SET_CSR_POWER_ON();
+      SET_AUDIO_SOURCE_CSR()
+      SET_AUDIO_UNMUTE();
 
     }
     // Map pulsewidth to throttle
@@ -2363,8 +2362,36 @@ void Task1code(void *pvParameters)
 
     // ESC control & low discharge protection
     esc();
-   debug_print();
+   //debug_print();
     // measure loop time
     loopTime = loopDuration(); // for debug only
+ 
+ 
+  }
+}
+
+//
+// =======================================================================================================
+// 2st  TASK,check advance data 
+// =======================================================================================================
+//
+
+void Task2code(void *pvParameters)
+{
+  for (;;)
+  {
+
+   
+    if (xSemaphoreTake(xRpmSemaphore, portMAX_DELAY))
+    {
+      if ( VESC.advancedUpdate())
+      {
+         masterVolume=VESC.get_adv_engine_sound_volume();
+
+      } 
+      xSemaphoreGive(xRpmSemaphore); // Now free or "Give" the semaphore for others.
+    }
+    
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
 }
