@@ -11,6 +11,9 @@
 #ifndef OW_CONTROL_CONFIG_H_
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
+#define SET_BIT(value, bit) (value |= (1 << bit))
+#define CLEAR_BIT(value, bit) (value &= ~(1 << bit))
+#define CHECK_BIT(var, pos) ((var) & (1 << (pos)))
 #define OW_CONTROL_CONFIG_H_
 #include <Arduino.h>
 //#define DUTY_TO_THROTTLE // you want to vesc dutycycle as throttle else use abd ermp as throttle 
@@ -28,8 +31,8 @@
 #define FAN_PIN 27
 // audio source selection 0:CSR8645 Audio  (CH442E IN pin pull low ) 1:ESP32 DAC output(CH442E IN pin pull high )
 #define AUDIO_SOURCE_PIN 33
-#define SET_AUDIO_SOURCE_ESP()  digitalWrite(AUDIO_SOURCE_PIN,HIGH);
-#define SET_AUDIO_SOURCE_CSR()  digitalWrite(AUDIO_SOURCE_PIN,LOW);
+#define SET_AUDIO_SOURCE_ESP()  digitalWrite(AUDIO_SOURCE_PIN,HIGH)
+#define SET_AUDIO_SOURCE_CSR()  digitalWrite(AUDIO_SOURCE_PIN,LOW)
 // PAM8606 audio amplifier mute control
 #define PAM_MUTE_PIN 13 //pcb board will modify the pin 
 #define SET_AUDIO_MUTE() digitalWrite(PAM_MUTE_PIN,LOW) //active lOW 
@@ -44,6 +47,7 @@
 // TX RX for VESC
 #define ESP_VESC_TX_PIN 16
 #define ESP_VESC_RX_PIN 17
+#define EPS_BUTTON_PIN 0
 // Voltage divider resistors Low R5=? ,up R3=?
 //#ifdef READ_BATTERY_VOL_FROM_ADC 
 
@@ -58,7 +62,7 @@
 #define RGB_LED2_DATA_PIN 2
 #define RGB_LED2_COUNT 8
 
-    /**idle warning time */
+/**idle warning time */
 typedef enum
 {
   FLOAT_IDLE_WARNING_TIME_DISABLE = 0,
@@ -90,15 +94,6 @@ typedef enum
 } FloatState;
 
 
-
-typedef enum
-{
-  SOUND_HORN,
-  SOUND_EXCUSE_ME,
-  SOUND_POLICE,
-} SoundTriggerType;
-
-
 typedef enum
 {
 	FLOAT_SWITCH_OFF = 0,
@@ -114,19 +109,19 @@ typedef enum
 	FLOAT_LIGHT_FULL_ON
 } floatLightMode;
 
-// audio source
-// using VESC controll id to get source
+/**
+ * aoudio source 
+ * AUDIO_SOURCE_CSR
+ * AUDIO_SOURCE_ESP32
+ */
 typedef enum
 {
   AUDIO_SOURCE_CSR,
   AUDIO_SOURCE_ESP32,
-} AudioSource;
+} Audio_Source;
 
 
-struct fw_version
-{
-  uint8_t major ,minor;
-};
+
 //additional sound setting 
 volatile int startUpWarningPercentage=100; //start-up warning sound 
 #include "vehicles/sounds/welcome.h"
@@ -134,8 +129,13 @@ volatile int overSpeedVolumePercentage=100; // over speed sound
 #include "vehicles/sounds/overSpeed.h"
 volatile int lowVoltageVolumePercentage=100;
 #include "vehicles/sounds/lowVoltage.h"
-volatile int excuseMeVolumePercentage=100;
-#include "vehicles/sounds/excuse_woman.h"
+volatile int excuseMeVolumePercentage=200;
+#include "vehicles/sounds/hurley.h"
+
 volatile int vescNotConnectVolumePercentage=100;
 #include "vehicles/sounds/vescNC.h"
+
+volatile int notifyVolumePercentage=200;
+#include "vehicles/sounds/notify.h"
+
 #endif
