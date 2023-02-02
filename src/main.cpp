@@ -24,7 +24,6 @@ char codeVersion[] = "9.10.0"; // Software revision.
 #include <Arduino.h>
 #include "ow_control_config.h"
 #include <VescUart.h> //VESC uart communication
-void Task1code(void *parameters);
 float batteryVolts();
 
 //
@@ -72,10 +71,8 @@ float batteryVolts();
 // #define ESPNOW_DEBUG  // uncomment for additional ESP-NOW messages
 // #define CORE_DEBUG // Don't use this!
 // #define VESC_DEBUG
- //#define FAKE_VESC_DATA // random Number for test
-#ifdef FAKE_VESC_DATA
-#define PI 3.14159265
-#endif
+#define FAKE_VESC_DATA // random Number for test
+
 // TODO = Things to clean up!
 
 //
@@ -269,15 +266,22 @@ bool batteryProtection = false;
 
 
 volatile uint8_t flaotVersion,soundTriggered ,vescEnableData;
-volatile bool isVescConnected, engineSoundEnable,startWarningEnable ,variablePlaybackTimerRunning ,lastNotifyTrigger,lastOverSpeedTrigger=false;
-volatile float vescErpm ,vescPid ;
+volatile bool isVescConnected, engineSoundEnable,startWarningEnable ,variablePlaybackTimerRunning ,lastNotifyTrigger=false;
+ float vescErpm ,vescPid ,vescInputVolt=0;
 volatile FloatSwitchState vescSwitchState ,lastVescSwitchState=FLOAT_SWITCH_OFF;
-const uint32_t engineOffDelay = 5000; // engine off delay
+const uint32_t engineOffDelay = 3000; // engine off delay
 unsigned long engineOffTimer,sourceCheckTimer;
 // audio source
 volatile Audio_Source source;
 volatile unsigned long timelast;
 unsigned long timelastloop;
+//voltage and speed average data 
+#define NUM_MEASUREMENTS 10
+bool lastLowVoltTrigger=false,lastOverSpeedTrigger=false;
+QueueHandle_t speedAvgDataQueue,voltAvgDataQueue=NULL;
+volatile float speedAvg=0;
+volatile float voltAvg=0;
+//
 //// Initiate VescUart class
 VescUart VESC(150);
 // DEBUG stuff
@@ -301,12 +305,10 @@ volatile uint32_t fixedTimerTicks = maxSampleInterval;
 SemaphoreHandle_t xPwmSemaphore;
 SemaphoreHandle_t xRpmSemaphore;
 
-// Queue for trigger sound
-QueueHandle_t soundTriggerQueue;
 // taskv handle
 TaskHandle_t engineTaskHandle = NULL;
 TaskHandle_t vescTaskHandle = NULL;
-
+TaskHandle_t  warningTaskHandle=NULL;
 //
 // =======================================================================================================
 // INTERRUPT FOR VARIABLE SPEED PLAYBACK (Engine sound, turbo sound)
@@ -1051,8 +1053,12 @@ void initIO()
 //   headLight.begin(LED1_PIN, 1, 20000); // Timer 1, 20kHz
 // #endif
 //   tailLight.begin(LED3_PIN, 2, 20000); // Timer 2, 20kHz
-  SET_CSR_POWER_OFF();
   SET_AUDIO_MUTE();
+  vTaskDelay(50/portTICK_PERIOD_MS);
+  SET_CSR_POWER_ON();
+  vTaskDelay(100/portTICK_PERIOD_MS);
+  SET_CSR_POWER_OFF();
+
 }
 
 //
@@ -1976,49 +1982,51 @@ void stop_variable_playback_timer()
   {
     SET_AUDIO_MUTE();
     SET_CSR_POWER_ON();
+    vTaskDelay(10 / portTICK_PERIOD_MS);
     SET_AUDIO_SOURCE_CSR();
     // delay 100ms
-    vTaskDelay(200 / portTICK_PERIOD_MS);
+    vTaskDelay(10 / portTICK_PERIOD_MS);
     SET_AUDIO_UNMUTE();
-    engineOn = false;
+   
+    
   } else if ( source == AUDIO_SOURCE_ESP32 )
   {
 
     SET_AUDIO_MUTE();
-    SET_CSR_POWER_OFF();
+    // delay 100ms
+     SET_CSR_POWER_OFF();
+    vTaskDelay(50 / portTICK_PERIOD_MS);
     SET_AUDIO_SOURCE_ESP();
     // delay 100ms
-    vTaskDelay(200 / portTICK_PERIOD_MS);
+    vTaskDelay(10 / portTICK_PERIOD_MS);
     SET_AUDIO_UNMUTE();
-    engineOn = false;
+
   }
 
-}
 
+}
 #ifdef FAKE_VESC_DATA
 void get_fake_data()
 {
   static float angle = 0;
   float val;
+  float absErpm;
   val = 2 * PI / 360;
   static unsigned long fakeTimer = millis();
-  if (millis() - fakeTimer > 250)
-  {
-    vescSwitchState = FLOAT_SWITCH_ON;
+  if (millis() - fakeTimer > 250 && vescSwitchState )
+  { 
+  
     vescErpm = MAX_ERPM * sin(val * angle);
-    Serial.print("Fake Vesc Erpm :");
-    Serial.println(vescErpm);
+    absErpm=abs(vescErpm);
+    //Serial.printf("Fake Vesc Erpm :%.2f\n",vescErpm);
     vescPid = 100 * sin(90 - (val * angle));
-    Serial.print("Fake Vesc pid :");
-    Serial.println(vescErpm);
+    //Serial.printf("Fake Vesc pid : %.2f\n",vescPid);
     angle += 1;
-    soundTriggered=0;
     fakeTimer = millis();
-    
+    xQueueSend(speedAvgDataQueue, &absErpm, (TickType_t)0);    
   }
 }
 #endif
-
 void check_sound_triggered( uint8_t sound  )
 { 
   static uint8_t hornClickCount=0;
@@ -2026,61 +2034,75 @@ void check_sound_triggered( uint8_t sound  )
   static uint8_t excuseMeClickcount=0;
 
  if (soundTriggered > 0)
+ {
+    if (CHECK_BIT(soundTriggered, SOUND_HORN_TRIGGERED))
+    {
+      hornClickCount++;
+      if (hornClickCount % 2 == 1)
       {
-        if (CHECK_BIT(soundTriggered, SOUND_HORN_TRIGGERED))
-        {
-          hornClickCount++;
-          if (hornClickCount % 2 == 1)
-          {
         hornLatch = true;
         hornTrigger = true;
-          }
-          else
-          {
+        if (!engineSoundEnable)
+          SET_AUDIO_SOURCE_ESP();
+      }
+      else
+      {
         hornLatch = true;
         hornTrigger = false;
-          }
+        if (!engineSoundEnable)
+          SET_AUDIO_SOURCE_CSR();
+      }
+    }
 
-          Serial.printf(" sound hron triggered \n");
-        }
+    if (CHECK_BIT(soundTriggered, SOUND_EXCUSE_ME_TRIGGERED))
+    {
+      excuseMeClickcount++;
+      if (excuseMeClickcount % 2 == 1)
+      {
+        excuseMeTrigger = true;
+        excuseMeLatch = true;
+        if (!engineSoundEnable)
+          SET_AUDIO_SOURCE_ESP();
+      }
+      else
+      {
+        excuseMeLatch = true;
+        excuseMeTrigger = false;
+        if (!engineSoundEnable)
+          SET_AUDIO_SOURCE_CSR();
+      }
 
-        if (CHECK_BIT(soundTriggered, SOUND_EXCUSE_ME_TRIGGERED))
-        {
-          excuseMeClickcount++;
-          if (excuseMeClickcount % 2 == 1)
-          {
-            excuseMeTrigger = true;
-            excuseMeLatch = true;
-          }
-          else
-          {
-            excuseMeLatch = true;
-            excuseMeTrigger = false;
-          }
+      Serial.printf(" excuse triggered \n");
+    }
 
-          Serial.printf(" excuse triggered \n");
-        }
-
-        if (CHECK_BIT(soundTriggered, SOUND_POLICE_TRIGGERED))
-        {
-          sirenClickCount++;
-          if (sirenClickCount % 2 == 1)
-          {
+    if (CHECK_BIT(soundTriggered, SOUND_POLICE_TRIGGERED))
+    {
+      sirenClickCount++;
+      if (sirenClickCount % 2 == 1)
+      {
         sirenLatch = true;
         sirenTrigger = true;
-          }
-          else
-          {
+        if (!engineSoundEnable)
+          SET_AUDIO_SOURCE_ESP();
+      }
+      else
+      {
         sirenLatch = true;
         sirenTrigger = false;
-          }
-        }
-
-        soundTriggered = 0;
+        if (!engineSoundEnable)
+          SET_AUDIO_SOURCE_CSR();
       }
+    }
+
+    soundTriggered = 0;
+ }
 }
+
+
+
 void reset_val()
 { 
+  engineOn=false;
   vescPid=0;
   vescErpm=0;
   vescSwitchState=FLOAT_SWITCH_OFF ;
@@ -2088,231 +2110,7 @@ void reset_val()
 }
 
 
-/**
- * ow setup
- */
-void ow_setup()
-{
-  initIO();
 
-  Serial.begin(115200); // USB serial (for DEBUG) Mode, Rx pin (99 = not used), Tx pin
-  // VESC serial
-  Serial2.begin(115200, SERIAL_8N1, ESP_VESC_TX_PIN, ESP_VESC_RX_PIN);
-  // wait serial init ..
-  while (!Serial2)
-  {
-    ;
-  }
-//#define   VESC_DEBUG 
-#ifdef VESC_DEBUG
-  VESC.setDebugPort(&Serial);
-#endif
-
-  VESC.setSerialPort(&Serial2);
-
-#ifdef FAKE_VESC_DATA
-  source = AUDIO_SOURCE_ESP32;
-  isVescConnected = true;
-  startWarningEnable=true;
-
-#else
-
-//Check the version at startup, the version must meet the requirements
-
-  unsigned long wait_time = millis() + 10000; //10秒鐘檢查,超時就僅能使用藍芽喇叭功能
-  while (millis() < wait_time)
-  {
-    flaotVersion = VESC.get_fw_version();
-    if (flaotVersion >= REQUIRE_FLOAT_APP_SPESC_VERSION) // check vesc fw version , if not connect will get 0.0
-    {
-      isVescConnected = true;
-      break;
-    }
-    else
-    {
-      isVescConnected = false;
-    }
-  }
-
-  if (isVescConnected)
-  {
-
-    Serial.printf("Vesc connected!\n");
-    //get enable data 
-    vescEnableData=VESC.get_adv_enable_data();
-    startWarningEnable=CHECK_BIT(vescEnableData,START_UP_WARNING_ENABLE_MASK_BIT);
-    engineSoundEnable=CHECK_BIT(vescEnableData,ENGINE_SOUND_ENABLE_MASK_BIT);
-     Serial.printf("Start warning Enable : %s\n", startWarningEnable ? "true" :"false");
-     Serial.printf("Enable sound Enable : %s\n", engineSoundEnable ? "true" :"false");
-    // Check if the warning sound should be activated
-    if ( startWarningEnable )
-    {
-      SET_AUDIO_SOURCE_ESP();       // switch audio source to esp32
-      vTaskDelay(100/portTICK_RATE_MS);
-      SET_AUDIO_UNMUTE();           // unmute
-      startUpWarningTrigger = true; // Turn on the startup warning sound
-      Serial.printf("Start warning sound \n");
-      while (startUpWarningTrigger)
-      {
-        ;
-      }
-     
-    }
-
-    // Check if the engine sound is enabled
-    if (engineSoundEnable)
-    {
-      Serial.printf("engine sound enable  \n");
-      source = AUDIO_SOURCE_ESP32;
-      start_variable_playback_timer();
-    }
-    else
-    {
-      stop_variable_playback_timer();
-      source = AUDIO_SOURCE_CSR;
-      masterVolume = 100;
-    }
-     SET_AUDIO_MUTE(); // mute
-  }
-  else
-  {
-    Serial.printf("Vesc not connected! ");
-    SET_AUDIO_SOURCE_ESP();
-    SET_AUDIO_UNMUTE();
-    vescNotConnectTrigger = true;
-    while (vescNotConnectTrigger)
-    {
-      ;
-    }
-    source = AUDIO_SOURCE_CSR;
-    SET_AUDIO_MUTE(); // mute
-  }
-
-#endif
-
-  change_audio_source(source);
-
-//Create task 
- if (isVescConnected)
-   {
-    if (xTaskCreatePinnedToCore(engineTask_func, "engineTask", 8192, NULL, 1, &engineTaskHandle, 1) == pdPASS)
-    {
-      Serial.printf("Task engineTask created successfully\r\n");
-    }
-    else
-    {
-      Serial.printf("Task Failed to create engineTask\r\n");
-    }
-
-    if (xTaskCreatePinnedToCore(vescTask_func, "vescTask", 2048, NULL, 1, &vescTaskHandle, 0) == pdPASS)
-    // create vesc comunication task
-    {
-      Serial.printf("Task vescTask created successfully\r\n");
-    }
-    else
-    {
-       Serial.printf("Task Failed to create vescTask\r\n");
-    }
-   } 
-   
-
-
-}
-
-
-// Setup
-void setup()
-{
- 
-  // Watchdog timers need to be disabled, if task 1 is running without delay(1)
-  disableCore0WDT();
-  // disableCore1WDT(); // TODO leaving this one enabled is experimental!
-  // Setup RTC (Real Time Clock) watchdog
-  // rtc_wdt_protect_off(); // Disable RTC WDT write protection
-  // rtc_wdt_set_length_of_reset_signal(RTC_WDT_SYS_RESET_SIG, RTC_WDT_LENGTH_3_2us);
-  // rtc_wdt_set_stage(RTC_WDT_STAGE0, RTC_WDT_STAGE_ACTION_RESET_SYSTEM);
-  // rtc_wdt_set_time(RTC_WDT_STAGE0, 10000); // set 10s timeout
-  // rtc_wdt_enable();                        // Start the RTC WDT timer
-  // rtc_wdt_disable();            // Disable the RTC WDT timer
-  // rtc_wdt_protect_on(); // Enable RTC WDT write protection
-  // Serial setup
-
-  // Semaphores are useful to stop a Task proceeding, where it should be paused to wait,
-  // because it is sharing a resource, such as the PWM variable.
-  // Semaphores should only be used whilst the scheduler is running, but we can set it up here.
-  if (xPwmSemaphore == NULL) // Check to confirm that the PWM Semaphore has not already been created.
-  {
-    xPwmSemaphore = xSemaphoreCreateMutex(); // Create a mutex semaphore we will use to manage variable access
-    if ((xPwmSemaphore) != NULL)
-      xSemaphoreGive((xPwmSemaphore)); // Make the PWM variable available for use, by "Giving" the Semaphore.
-  }
-
-  if (xRpmSemaphore == NULL) // Check to confirm that the RPM Semaphore has not already been created.
-  {
-    xRpmSemaphore = xSemaphoreCreateMutex(); // Create a mutex semaphore we will use to manage variable access
-    if ((xRpmSemaphore) != NULL)
-      xSemaphoreGive((xRpmSemaphore)); // Make the RPM variable available for use, by "Giving" the Semaphore.
-  }
-
-  // Refresh sample intervals (important, because MAX_RPM_PERCENTAGE was probably changed above)
-  maxSampleInterval = 4000000 / sampleRate;
-  minSampleInterval = 4000000 / sampleRate * 100 / MAX_RPM_PERCENTAGE;
-  
-  // Interrupt timer for fixed sample rate playback
-  fixedTimer = timerBegin(1, 20, true);                        // timer 1, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 20 -> 250 ns = 0.25 us, countUp
-  timerAttachInterrupt(fixedTimer, &fixedPlaybackTimer, true); // edge (not level) triggered
-  timerAlarmWrite(fixedTimer, fixedTimerTicks, true);          // autoreload true
-  timerAlarmEnable(fixedTimer);                                // enable
-
-
-  // setup for wheel
-  ow_setup();
-
-  // // Task 1 setup (running on core 0)
-  // TaskHandle_t Task1;
-  // // task 2 is check advanced data
-  // TaskHandle_t Task2;
-  // // create a task that will be executed in the Task1code() function, with priority 1 and executed on core 0
-
-  // xTaskCreatePinnedToCore(
-  //     Task2code, // Task function
-  //     "Task2",   // name of task
-  //     2048,      // Stack size of task (8192)
-  //     NULL,      // parameter of the task
-  //     1,         // priority of the task (1 = low, 3 = medium, 5 = highest)
-  //     &Task2,    // Task handle to keep track of created task
-  //     1);        // pin task to core 0
-
-  // xTaskCreatePinnedToCore(
-  //     Task1code, // Task function
-  //     "Task1",   // name of task
-  //     8192,      // Stack size of task (8192)
-  //     NULL,      // parameter of the task
-  //     1,         // priority of the task (1 = low, 3 = medium, 5 = highest)
-  //     &Task1,    // Task handle to keep track of created task
-  //     0);        // pin task to core 0
-
-  
-
- 
-
-}
-
-// =======================================================================================================
-// MAIN LOOP, RUNNING ON CORE 1
-// =======================================================================================================
-//
-
-void loop()
-{
-  
-
-
-
-
-vTaskDelay(100 / portTICK_PERIOD_MS);
-
-}
 
 //
 // =======================================================================================================
@@ -2357,87 +2155,63 @@ void engineTask_func(void *pvParameters)
 }
 
 void vescTask_func(void *pvParameters)
-{   
-
-  //reset value 
+{ 
   reset_val();
-    if (source == AUDIO_SOURCE_ESP32  )
-    {  engineOn = false;
-      SET_CSR_POWER_OFF();
-      SET_AUDIO_SOURCE_ESP();
-     
-    }
-    else if (source == AUDIO_SOURCE_CSR)
-    {
-      // turn on csr
-      engineOn = false;
-      SET_CSR_POWER_ON();
-      SET_AUDIO_SOURCE_CSR();
-      SET_AUDIO_UNMUTE();
-    }
- 
-  
-
+  float absErpm=0;
 
   for (;;)
   {
       if (xSemaphoreTake(xRpmSemaphore, portMAX_DELAY))
       {
-
 #ifdef FAKE_VESC_DATA
       get_fake_data(); // generate sin of erpm data and cos of pid data.
-#else 
+#else
+
+      vescErpm = VESC.get_erpm();
+      absErpm = abs(vescErpm);
+      vescPid = VESC.get_pid_output();
+      xQueueSend(speedAvgDataQueue, &absErpm, (TickType_t)0);
+
+#endif
       vescSwitchState = (FloatSwitchState)VESC.get_switch_state();
-      soundTriggered= VESC.get_sound_triggered();
+      soundTriggered = VESC.get_sound_triggered();
+      vescInputVolt = VESC.get_input_voltage();
+      xQueueSend(voltAvgDataQueue, &vescInputVolt, (TickType_t)0);
+
+      mapThrottle();
       check_sound_triggered(soundTriggered);
-#endif
-      if (lastVescSwitchState != vescSwitchState)
+     // 檢查開關前一個狀態跟現在狀態有改變才觸發音效 , 避免音效一直觸發.
+      if (lastVescSwitchState != vescSwitchState && vescSwitchState == FLOAT_SWITCH_ON  && !engineSoundEnable)
       {
+        Serial.printf(" Switch State: %s\n" , vescSwitchState? "ON ":"OFF");
+        notifyTrigger = true;
+      }
 
-        switch (vescSwitchState)
+      if (lastNotifyTrigger != notifyTrigger && engineSoundEnable == false)
+      { Serial.printf("   notifyTrigger : %s\n" , notifyTrigger? "true":"false"  );
+        notifyTrigger ? SET_AUDIO_SOURCE_ESP() : SET_AUDIO_SOURCE_CSR();
+      }
+     
+     if (vescSwitchState == FLOAT_SWITCH_ON && engineSoundEnable )
+     {
+        engineOn = true;
+        engineOffTimer = millis();
+     }
+     else
+     {
+        if (millis() - engineOffTimer > engineOffDelay)
         {
-        case FLOAT_SWITCH_ON:
-          if (engineSoundEnable)
-          {
-            engineOn = true;
-            engineOffTimer = millis();
-          }
-          else
-          {
-            engineOn = false;
-            notifyTrigger = true;
-          }
-          break;
-        case FLOAT_SWITCH_HALF:
-          break;
-        case FLOAT_SWITCH_OFF:
-          break;
+          engineOn = false;
         }
-      }
+     }
 
-      if (lastNotifyTrigger != notifyTrigger && engineSoundEnable==false)
-      {
-          notifyTrigger ? SET_AUDIO_SOURCE_ESP() : SET_AUDIO_SOURCE_CSR();
-      }
 
-      lastNotifyTrigger=notifyTrigger;
-      lastVescSwitchState=vescSwitchState;
+      lastNotifyTrigger = notifyTrigger;
+      lastVescSwitchState = vescSwitchState;
+      masterVolume = VESC.get_adv_engine_sound_volume();
 
-      if (millis() - engineOffTimer > engineOffDelay)
-      {
-         engineOn = false;
-      }
 
-      //masterVolume=VESC.get_adv_engine_sound_volume();
 
-      if (engineSoundEnable)
-      {
-#ifndef FAKE_VESC_DATA
-          vescErpm = VESC.get_erpm();
-         vescPid = VESC.get_pid_output();
-#endif
-         mapThrottle();
-      }
       xSemaphoreGive(xRpmSemaphore); // Now free or "Give" the semaphore for others.
       }
 
@@ -2451,3 +2225,299 @@ void vescTask_func(void *pvParameters)
     rtc_wdt_feed();
   }
 }
+//warning task
+
+void warningTask_func(void *pvParameters)
+{
+  int voltCount=0, speedCount = 0;
+  float speedAverage=0, speedSum=0, voltAverage=0, voltSum = 0 ,speedKmh=0,vescSpeedLimit=0;;
+  float speedRawData[NUM_MEASUREMENTS];
+  float voltRawData[NUM_MEASUREMENTS];
+
+  for (;;)
+  {
+    if (isVescConnected)
+    { // Average erpm reading
+      if (xQueueReceive(speedAvgDataQueue, &speedRawData[speedCount], (TickType_t)10) == pdTRUE)
+      {
+        // 資料已收到
+
+        speedSum += abs( speedRawData[speedCount]);
+        speedCount++;
+
+        if (speedCount == NUM_MEASUREMENTS)
+        {
+          speedAverage = speedSum / NUM_MEASUREMENTS;
+          // store average in global variable speedAvg
+          speedKmh = (speedAverage / (MOTOR_POLES / 2));
+          speedKmh = ((speedKmh / 60) * WHEEL_DIAMETER * M_PI / GEAR_RATIO) * 3.6;
+          Serial.printf(" Speed average data  : %.2f km/H", speedKmh);
+          speedSum = 0;
+          speedCount = 0;
+         
+        }
+      }
+      
+      // Average input voltage reading
+      if (xQueueReceive(voltAvgDataQueue, &voltRawData[voltCount], (TickType_t)10) == pdTRUE)
+      {
+        // 資料已收到
+
+        voltSum += voltRawData[voltCount];
+        voltCount++;
+
+        if (voltCount == NUM_MEASUREMENTS)
+        {
+          voltAverage = voltSum / NUM_MEASUREMENTS;
+          // store average in global variable voltAvg
+          //  ...
+          Serial.printf(" Voltage average data  : %.2f", voltAverage);
+          voltSum = 0;
+          voltCount = 0;
+        }
+      }
+   
+/**計算行駛速度
+ * rpm = erpm / (poles / 2.0)
+	kmh = ((rpm / 60.0) * wheel_d * M_PI / gearing) * 3.6;
+ * Speed = ((motor poles/2) * 60 *gear ratio ) / (wheel diameter * 3.1415)
+ * 
+ */
+      if (xSemaphoreTake(xRpmSemaphore, portMAX_DELAY))
+      {
+        vescSpeedLimit = (float)VESC.get_adv_over_speed_warning();
+        if (vescSpeedLimit > 0)
+        {
+          if (speedKmh > vescSpeedLimit && !overSpeedTrigger)
+          {
+            Serial.printf("Over Speed !!real speed :%.2f\n  limit speed :%.2f", speedKmh, vescSpeedLimit);
+            overSpeedTrigger = true;
+
+            speedKmh = 0;
+          }
+
+          if (lastOverSpeedTrigger != overSpeedTrigger && !engineSoundEnable)
+          {
+            if (overSpeedTrigger)
+              SET_AUDIO_SOURCE_ESP();
+            if (!overSpeedTrigger)
+              SET_AUDIO_SOURCE_CSR();
+          }
+
+          lastOverSpeedTrigger = overSpeedTrigger;
+        }
+        xSemaphoreGive(xRpmSemaphore); // Now free or "Give" the semaphore for others.
+      }
+    }
+
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+  }
+}
+
+
+/**
+ * ow setup
+ */
+void ow_setup()
+{
+  initIO();
+
+  Serial.begin(115200); // USB serial (for DEBUG) Mode, Rx pin (99 = not used), Tx pin
+  // VESC serial
+  Serial2.begin(115200, SERIAL_8N1, ESP_VESC_TX_PIN, ESP_VESC_RX_PIN);
+  // wait serial init ..
+  while (!Serial2)
+  {
+    ;
+  }
+//#define   VESC_DEBUG 
+#ifdef VESC_DEBUG
+  VESC.setDebugPort(&Serial);
+#endif
+
+  VESC.setSerialPort(&Serial2);
+//Check the version at startup, the version must meet the requirements
+  unsigned long wait_time = millis() + 10000; //10秒鐘檢查,超時就僅能使用藍芽喇叭功能
+  while (millis() < wait_time)
+  {
+    flaotVersion = VESC.get_fw_version();
+    if (flaotVersion >= REQUIRE_FLOAT_APP_SPESC_VERSION) // check vesc fw version , if not connect will get 0.0
+    {
+      isVescConnected = true;
+      break;
+    }
+    else
+    {
+      isVescConnected = false;
+    }
+  }
+
+  if (isVescConnected)
+  {
+
+    Serial.printf("Vesc connected!\n");
+    //get enable data 
+    vescEnableData=VESC.get_adv_enable_data();
+    startWarningEnable=CHECK_BIT(vescEnableData,START_UP_WARNING_ENABLE_MASK_BIT);
+    engineSoundEnable=CHECK_BIT(vescEnableData,ENGINE_SOUND_ENABLE_MASK_BIT);
+     Serial.printf("Start warning Enable : %s\n", startWarningEnable ? "true" :"false");
+     Serial.printf("Enable sound Enable : %s\n", engineSoundEnable ? "true" :"false");
+    // Check if the warning sound should be activated
+    if ( startWarningEnable )
+    { SET_AUDIO_MUTE();
+      vTaskDelay(10/portTICK_RATE_MS);
+      SET_AUDIO_SOURCE_ESP();       // switch audio source to esp32
+      vTaskDelay(10/portTICK_RATE_MS);
+      SET_AUDIO_UNMUTE();           // unmute
+      startUpWarningTrigger = true; // Turn on the startup warning sound
+      Serial.printf("Start warning sound \n");
+      while (startUpWarningTrigger)
+      {
+        ;
+      }
+     
+    }
+
+    // Check if the engine sound is enabled
+    if (engineSoundEnable)
+    {
+      Serial.printf("engine sound enable  \n");
+      source = AUDIO_SOURCE_ESP32;
+      start_variable_playback_timer();
+    }
+    else
+    {
+      stop_variable_playback_timer();
+      source = AUDIO_SOURCE_CSR;
+      masterVolume = 100;
+    }
+     SET_AUDIO_MUTE(); // mute
+  }
+  else
+  {
+
+     Serial.printf("Vesc not connected! ");
+     SET_AUDIO_MUTE();
+     vTaskDelay(10 / portTICK_RATE_MS);
+     SET_AUDIO_SOURCE_ESP(); // switch audio source to esp32
+     vTaskDelay(10 / portTICK_RATE_MS);
+     SET_AUDIO_UNMUTE();
+     vescNotConnectTrigger = true;
+     while (vescNotConnectTrigger)
+     {
+      ;
+     }
+     startUpWarningTrigger = true;
+     while (startUpWarningTrigger)
+     {
+      ;
+     }
+     source = AUDIO_SOURCE_CSR;
+     SET_AUDIO_MUTE(); // mute
+  }
+
+//Create task 
+ if (isVescConnected)
+   {
+    if (xTaskCreatePinnedToCore(engineTask_func, "engineTask", 8192, NULL, 1, &engineTaskHandle, 1) == pdPASS)
+    {
+      Serial.printf("Task engineTask created successfully\r\n");
+    }
+    else
+    {
+      Serial.printf("Task Failed to create engineTask\r\n");
+    }
+
+    if (xTaskCreatePinnedToCore(vescTask_func, "vescTask", 2048, NULL, 1, &vescTaskHandle, 0) == pdPASS)
+    // create vesc comunication task
+    {
+      Serial.printf("Task vescTask created successfully\r\n");
+    }
+    else
+    {
+       Serial.printf("Task Failed to create vescTask\r\n");
+    }
+ 
+ if (xTaskCreatePinnedToCore(warningTask_func, "warningTask", 2048, NULL, 2, &warningTaskHandle, 0) == pdPASS)
+    // create vesc comunication task
+    {
+      Serial.printf("Task warningTask created successfully\r\n");
+    }
+    else
+    {
+       Serial.printf("Task Failed to create warningTask\r\n");
+    }
+
+   } 
+  
+  change_audio_source(source);
+
+}
+
+// Setup
+void setup()
+{
+ 
+  // Watchdog timers need to be disabled, if task 1 is running without delay(1)
+  disableCore0WDT();
+  // disableCore1WDT(); // TODO leaving this one enabled is experimental!
+  // Setup RTC (Real Time Clock) watchdog
+  // rtc_wdt_protect_off(); // Disable RTC WDT write protection
+  // rtc_wdt_set_length_of_reset_signal(RTC_WDT_SYS_RESET_SIG, RTC_WDT_LENGTH_3_2us);
+  // rtc_wdt_set_stage(RTC_WDT_STAGE0, RTC_WDT_STAGE_ACTION_RESET_SYSTEM);
+  // rtc_wdt_set_time(RTC_WDT_STAGE0, 10000); // set 10s timeout
+  // rtc_wdt_enable();                        // Start the RTC WDT timer
+  // rtc_wdt_disable();            // Disable the RTC WDT timer
+  // rtc_wdt_protect_on(); // Enable RTC WDT write protection
+  // Serial setup
+
+  // Semaphores are useful to stop a Task proceeding, where it should be paused to wait,
+  // because it is sharing a resource, such as the PWM variable.
+  // Semaphores should only be used whilst the scheduler is running, but we can set it up here.
+  if (xPwmSemaphore == NULL) // Check to confirm that the PWM Semaphore has not already been created.
+  {
+    xPwmSemaphore = xSemaphoreCreateMutex(); // Create a mutex semaphore we will use to manage variable access
+    if ((xPwmSemaphore) != NULL)
+      xSemaphoreGive((xPwmSemaphore)); // Make the PWM variable available for use, by "Giving" the Semaphore.
+  }
+
+  if (xRpmSemaphore == NULL) // Check to confirm that the RPM Semaphore has not already been created.
+  {
+    xRpmSemaphore = xSemaphoreCreateMutex(); // Create a mutex semaphore we will use to manage variable access
+    if ((xRpmSemaphore) != NULL)
+      xSemaphoreGive((xRpmSemaphore)); // Make the RPM variable available for use, by "Giving" the Semaphore.
+  }
+
+  // Refresh sample intervals (important, because MAX_RPM_PERCENTAGE was probably changed above)
+  maxSampleInterval = 4000000 / sampleRate;
+  minSampleInterval = 4000000 / sampleRate * 100 / MAX_RPM_PERCENTAGE;
+  
+  // Interrupt timer for fixed sample rate playback
+  fixedTimer = timerBegin(1, 20, true);                        // timer 1, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 20 -> 250 ns = 0.25 us, countUp
+  timerAttachInterrupt(fixedTimer, &fixedPlaybackTimer, true); // edge (not level) triggered
+  timerAlarmWrite(fixedTimer, fixedTimerTicks, true);          // autoreload true
+  timerAlarmEnable(fixedTimer);                                // enable
+  // create queue for average data  
+  speedAvgDataQueue = xQueueCreate(NUM_MEASUREMENTS, sizeof(float));
+  voltAvgDataQueue = xQueueCreate(NUM_MEASUREMENTS, sizeof(float));
+  // setup for wheel
+  ow_setup();
+
+
+}
+
+// =======================================================================================================
+// MAIN LOOP, RUNNING ON CORE 1
+// =======================================================================================================
+//
+
+void loop()
+{
+  
+  for (;;)
+  {
+
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+}
+

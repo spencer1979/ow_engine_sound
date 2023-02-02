@@ -1,4 +1,11 @@
 {
     "C_Cpp.dimInactiveRegions": true,
-    "commentTranslate.targetLanguage": "en"
+    "commentTranslate.targetLanguage": "en",
+    "files.associations": {
+        "array": "cpp",
+        "string": "cpp",
+        "*.tcc": "cpp",
+        "cmath": "cpp",
+        "cstdlib": "cpp"
+    }
 }

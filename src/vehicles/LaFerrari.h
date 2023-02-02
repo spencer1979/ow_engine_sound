@@ -20,7 +20,7 @@ volatile int revVolumePercentage = 100; // Adjust the idle volume (usually = 100
 volatile int engineRevVolumePercentage = 40; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
 volatile const uint16_t revSwitchPoint = 50; // The rev sound is played instead of the idle sound above this point
 volatile const uint16_t idleEndPoint = 300; // above this point, we have 100% rev and 0% idle sound volume (usually 500, min. 50 more than revSwitchPoint)
-volatile const uint16_t idleVolumeProportionPercentage = 100; // The idle sound volume proportion (rest is rev proportion) below "revSwitchPoint" (about 90 - 100%, never more than 100)
+volatile const uint16_t idleVolumeProportionPercentage = 150; // The idle sound volume proportion (rest is rev proportion) below "revSwitchPoint" (about 90 - 100%, never more than 100)
 #ifdef REV_SOUND
 #include "sounds/LaFerrariRev.h" // Ferrari LaFerrari, V12
 #endif

@@ -9,13 +9,15 @@
  *
  */
 #ifndef OW_CONTROL_CONFIG_H_
+#define OW_CONTROL_CONFIG_H_
+
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 #define SET_BIT(value, bit) (value |= (1 << bit))
 #define CLEAR_BIT(value, bit) (value &= ~(1 << bit))
 #define CHECK_BIT(var, pos) ((var) & (1 << (pos)))
-#define OW_CONTROL_CONFIG_H_
-#include <Arduino.h>
+
+//#include <Arduino.h>
 //#define DUTY_TO_THROTTLE // you want to vesc dutycycle as throttle else use abd ermp as throttle 
 #define ESP32_DEBUG // DEBUG ESP32 
 #define USE_DUAL_HEAD_LIGHT // USE dual led  for headlight
@@ -61,6 +63,17 @@
 #define RGB_LED1_COUNT 8
 #define RGB_LED2_DATA_PIN 2
 #define RGB_LED2_COUNT 8
+/**
+ * rpm = erpm / (poles / 2.0)
+	kmh = ((rpm / 60.0) * wheel_d * M_PI / gearing) * 3.6;
+ * Speed = ((motor poles/2) * 60 *gear ratio ) / (wheel diameter * 3.1415)
+ * 
+ */
+#define M_PI 3.14159265
+#define MOTOR_POLES 30
+#define GEAR_RATIO 1
+#define WHEEL_DIAMETER 0.27 
+
 
 /**idle warning time */
 typedef enum
@@ -125,7 +138,7 @@ typedef enum
 //additional sound setting 
 volatile int startUpWarningPercentage=100; //start-up warning sound 
 #include "vehicles/sounds/welcome.h"
-volatile int overSpeedVolumePercentage=100; // over speed sound 
+volatile int overSpeedVolumePercentage=200; // over speed sound 
 #include "vehicles/sounds/overSpeed.h"
 volatile int lowVoltageVolumePercentage=100;
 #include "vehicles/sounds/lowVoltage.h"
@@ -135,7 +148,11 @@ volatile int excuseMeVolumePercentage=200;
 volatile int vescNotConnectVolumePercentage=100;
 #include "vehicles/sounds/vescNC.h"
 
-volatile int notifyVolumePercentage=200;
+volatile int notifyVolumePercentage=150;
 #include "vehicles/sounds/notify.h"
+
+
+
+
 
 #endif
