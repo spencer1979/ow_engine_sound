@@ -69,7 +69,6 @@
  * Speed = ((motor poles/2) * 60 *gear ratio ) / (wheel diameter * 3.1415)
  * 
  */
-#define M_PI 3.14159265
 #define MOTOR_POLES 30
 #define GEAR_RATIO 1
 #define WHEEL_DIAMETER 0.27 
@@ -148,9 +147,11 @@ volatile int excuseMeVolumePercentage=200;
 volatile int vescNotConnectVolumePercentage=100;
 #include "vehicles/sounds/vescNC.h"
 
+//#define ENABLE_NOTIFY
+#ifdef ENABLE_NOTIFY
 volatile int notifyVolumePercentage=150;
 #include "vehicles/sounds/notify.h"
-
+#endif
 
 
 
