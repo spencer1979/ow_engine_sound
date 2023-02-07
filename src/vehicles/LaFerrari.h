@@ -4,19 +4,19 @@
 
 // Sound files (22'050 Hz, 8 bit PCM recommended) -----------------------------------------------------------------------
 // Choose the start sound (uncomment the one you want) --------
-volatile int startVolumePercentage = 150; // Adjust the start volume (usually = 100%)
+volatile int startVolumePercentage = 160; // Adjust the start volume (usually = 100%)
 #include "sounds/LaFerrariStart.h" // Ferrari LaFerrari, V12
 
 // Choose the motor idle sound (uncomment the one you want) --------
-volatile int idleVolumePercentage =90; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
-volatile int engineIdleVolumePercentage =60; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
-volatile int fullThrottleVolumePercentage = 180; // Volume Percentage while full throttle (for rev sound as well)
+volatile int idleVolumePercentage =70; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
+volatile int engineIdleVolumePercentage =80; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
+volatile int fullThrottleVolumePercentage = 400; // Volume Percentage while full throttle (for rev sound as well)
 #include "sounds/LaFerrariIdle.h" // Jaguar XJS V12
 //#include "sounds/idleDummy.h" // Dummy
 
 // Choose the motor revving sound (uncomment the one you want) --------
 #define REV_SOUND // uncomment this, if you want to use the separate, optional rev sound
-volatile int revVolumePercentage = 100; // Adjust the idle volume (usually = 100%, more also working, depending on sound)
+volatile int revVolumePercentage = 200; // Adjust the idle volume (usually = 100%, more also working, depending on sound)
 volatile int engineRevVolumePercentage = 40; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
 volatile const uint16_t revSwitchPoint = 50; // The rev sound is played instead of the idle sound above this point
 volatile const uint16_t idleEndPoint = 300; // above this point, we have 100% rev and 0% idle sound volume (usually 500, min. 50 more than revSwitchPoint)
@@ -27,9 +27,9 @@ volatile const uint16_t idleVolumeProportionPercentage = 150; // The idle sound 
 
 // Choose the jake brake sound (uncomment the one you want) --------
 #define JAKE_BRAKE_SOUND // uncomment this, if you want to use the jake brake sound
-volatile int jakeBrakeVolumePercentage = 140; // Adjust the max. volume (usually = 150%)
-volatile int jakeBrakeIdleVolumePercentage = 0; // Adjust the min. volume (usually = 80%)
-volatile int jakeBrakeMinRpm = 200; // Adjust the min. RPM for the jake brake (around 100)
+volatile int jakeBrakeVolumePercentage = 150; // Adjust the max. volume (usually = 150%)
+volatile int jakeBrakeIdleVolumePercentage = 50; // Adjust the min. volume (usually = 80%)
+volatile int jakeBrakeMinRpm = 100; // Adjust the min. RPM for the jake brake (around 100)
 #ifdef JAKE_BRAKE_SOUND
 #include "sounds/JakeBrake.h" // CAT V8 Jake Brake sound
 #endif
@@ -52,8 +52,8 @@ uint16_t knockStartRpm = 400; // starting @ this RPM (about 50 - 400)
 #include "sounds/LaFerrariKnock.h" // Ferrari LaFerrari, V12
 
 // Adjust the additional turbo sound (set "turboVolumePercentage" to "0", if you don't want it) --------
-volatile int turboVolumePercentage = 0; // Adjust the turbo volume (usually = 70%)
-volatile int turboIdleVolumePercentage = 0; // the turbo volume will be engine rpm dependent (usually = 10%)
+volatile int turboVolumePercentage =70; // Adjust the turbo volume (usually = 70%)
+volatile int turboIdleVolumePercentage = 10; // the turbo volume will be engine rpm dependent (usually = 10%)
 #include "sounds/TurboWhistle.h" // Turbo sound, playing in parallel with engine sound!
 
 // Adjust the additional supercharger sound (set "chargerVolumePercentage" to "0", if you don't want it) --------

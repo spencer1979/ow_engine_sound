@@ -137,7 +137,7 @@ typedef enum
 //additional sound setting 
 volatile int startUpWarningPercentage=100; //start-up warning sound 
 #include "vehicles/sounds/welcome.h"
-volatile int overSpeedVolumePercentage=200; // over speed sound 
+volatile int overSpeedVolumePercentage=300; // over speed sound 
 #include "vehicles/sounds/overSpeed.h"
 volatile int lowVoltageVolumePercentage=100;
 #include "vehicles/sounds/lowVoltage.h"
