@@ -17,9 +17,14 @@
 #define CLEAR_BIT(value, bit) (value &= ~(1 << bit))
 #define CHECK_BIT(var, pos) ((var) & (1 << (pos)))
 
-//#include <Arduino.h>
+#include <Arduino.h>
 //#define DUTY_TO_THROTTLE // you want to vesc dutycycle as throttle else use abd ermp as throttle 
-#define ESP32_DEBUG // DEBUG ESP32 
+//#define DEBUG 0
+#ifdef DEBUG
+#define DEBUG_PRINT(...) Serial.printf(__VA_ARGS__)
+#else
+#define DEBUG_PRINT(...)
+#endif
 #define USE_DUAL_HEAD_LIGHT // USE dual led  for headlight
 #define USE_RGB_LED         // use ws2812 RGB led
 #define USE_FAN_COOLING             // use fan for cooling

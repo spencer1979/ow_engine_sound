@@ -9,18 +9,18 @@ volatile int startVolumePercentage = 160; // Adjust the start volume (usually = 
 
 // Choose the motor idle sound (uncomment the one you want) --------
 volatile int idleVolumePercentage =70; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
-volatile int engineIdleVolumePercentage =80; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
-volatile int fullThrottleVolumePercentage = 400; // Volume Percentage while full throttle (for rev sound as well)
+volatile int engineIdleVolumePercentage =60; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
+volatile int fullThrottleVolumePercentage = 150; // Volume Percentage while full throttle (for rev sound as well)
 #include "sounds/LaFerrariIdle.h" // Jaguar XJS V12
 //#include "sounds/idleDummy.h" // Dummy
 
 // Choose the motor revving sound (uncomment the one you want) --------
 #define REV_SOUND // uncomment this, if you want to use the separate, optional rev sound
-volatile int revVolumePercentage = 200; // Adjust the idle volume (usually = 100%, more also working, depending on sound)
+volatile int revVolumePercentage = 120; // Adjust the idle volume (usually = 100%, more also working, depending on sound)
 volatile int engineRevVolumePercentage = 40; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
 volatile const uint16_t revSwitchPoint = 50; // The rev sound is played instead of the idle sound above this point
 volatile const uint16_t idleEndPoint = 300; // above this point, we have 100% rev and 0% idle sound volume (usually 500, min. 50 more than revSwitchPoint)
-volatile const uint16_t idleVolumeProportionPercentage = 150; // The idle sound volume proportion (rest is rev proportion) below "revSwitchPoint" (about 90 - 100%, never more than 100)
+volatile const uint16_t idleVolumeProportionPercentage = 100; // The idle sound volume proportion (rest is rev proportion) below "revSwitchPoint" (about 90 - 100%, never more than 100)
 #ifdef REV_SOUND
 #include "sounds/LaFerrariRev.h" // Ferrari LaFerrari, V12
 #endif
@@ -46,7 +46,7 @@ volatile int dieselKnockAdaptiveVolumePercentage = 50; // Adjust the Diesel knoc
 #define RPM_DEPENDENT_KNOCK // Knock volume also depending on engine RPM *****************
 #ifdef RPM_DEPENDENT_KNOCK // These parameters are for RPM dependent knock mode only:
 uint8_t minKnockVolumePercentage = 5; // percentage, if at knock start RPM (about 5 - 80)
-uint16_t knockStartRpm = 400; // starting @ this RPM (about 50 - 400)
+uint16_t knockStartRpm = 300; // starting @ this RPM (about 50 - 400)
 #endif // ********************************************************************************
 //#include "sounds/DieselKnockDummy.h" // Dummy
 #include "sounds/LaFerrariKnock.h" // Ferrari LaFerrari, V12
