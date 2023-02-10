@@ -195,7 +195,7 @@ volatile int16_t masterVolume = 100; // Master volume percentage
 volatile uint8_t dacOffset = 0;      // 128, but needs to be ramped up slowly to prevent popping noise, if switched on
 
 // Throttle
-int16_t currentThrottle = 0;      // 0 - 5000 (Throttle trigger input)
+int16_t currentThrottle = 0;      // 0 - 500(Throttle trigger input)
 int16_t currentThrottleFaded = 0; // faded throttle for volume calculations etc.
 
 // Engine
@@ -280,6 +280,7 @@ volatile Audio_Source source;
 //QueueHandle 
 QueueHandle_t speedAvgDataQueue = NULL;
 QueueHandle_t speedDataQueue = NULL;
+
 // Initiate VescUart class
 VescUart VESC(100);
 
@@ -302,7 +303,7 @@ volatile uint32_t fixedTimerTicks = maxSampleInterval;
 // It will be used to ensure only only one Task is accessing this resource at any time.
 
 SemaphoreHandle_t xVescSemaphore;
-
+SemaphoreHandle_t xRpmSemaphore;
 // taskv handle
 TaskHandle_t engineTaskHandle = NULL;
 TaskHandle_t vescTaskHandle = NULL;
@@ -599,7 +600,7 @@ void IRAM_ATTR fixedPlaybackTimer()
   static boolean knockMedium = 0;                                         // This knock will be medium
   static uint8_t curKnockCylinder = 0;                                    // Index of currently ignited zylinder
 
- portENTER_CRITICAL_ISR(&fixedTimerMux);
+ //portENTER_CRITICAL_ISR(&fixedTimerMux);
 
   // Group "a" (horn & siren) ******************************************************************
 
@@ -1016,7 +1017,7 @@ void IRAM_ATTR fixedPlaybackTimer()
   // dacWrite(DAC2, constrain( a2 * masterVolume / 100 + dacOffset, 0, 255)); // Mix signals, add 128 offset, write result to DAC
   // dacWrite(DAC2, 0);
 
-  portEXIT_CRITICAL_ISR(&fixedTimerMux);
+  //portEXIT_CRITICAL_ISR(&fixedTimerMux);
 }
 
 
@@ -1118,20 +1119,26 @@ int16_t map_int16(int16_t x, int16_t in_min, int16_t in_max, int16_t out_min, in
 static int16_t get_vesc_throttle()
 {
   int16_t throttle;
-  DEBUG_PRINT("throttle is %.2f\n",absErpm);
-  throttle = (int16_t) absErpm;
-  DEBUG_PRINT("throttle is %d\n",throttle);
+  throttle = (int16_t)absErpm;
+  if (throttle > MAX_VESC_ERPM)
+  {
+    throttle = MAX_VESC_ERPM;
+  }
+  if (throttle < MIN_VESC_ERPM)
+  {
+    throttle = MIN_VESC_ERPM;
+  }
   throttle = map_int16(throttle, MIN_VESC_ERPM, MAX_VESC_ERPM, minRpm, maxRpm);
-  DEBUG_PRINT("throttle is %d\n",throttle);
-  if ( throttle > maxRpm) 
-  { throttle =maxRpm ;}
- if ( throttle < minRpm) 
-  { throttle =minRpm; }
-
-  
+  if (throttle > maxRpm)
+  {
+    throttle = maxRpm;
+  }
+  if (throttle < minRpm)
+  {
+    throttle = minRpm;
+  }
   return throttle;
 }
-
 
 //
 // =======================================================================================================
@@ -1144,16 +1151,6 @@ void mapThrottle()
 
   // Input is around 1000 - 2000us, output 0-500 for forward and backwards
   // Volume calculations --------------------------------------------------------------------------
-  int16_t throttle;
- 
-  throttle = (int16_t) absErpm;
-  throttle = map_int16(throttle, MIN_VESC_ERPM, MAX_VESC_ERPM, minRpm, maxRpm);
-
-  if ( throttle > maxRpm) 
-  { throttle =maxRpm ;}
- if ( throttle < minRpm) 
-  { throttle =minRpm; }
-xQueueSend(speedDataQueue, &throttle, (TickType_t)0);
   // As a base for some calculations below, fade the current throttle to make it more natural
   static unsigned long throttleFaderMicros;
   static boolean blowoffLock;
@@ -1676,19 +1673,10 @@ int8_t pidPulse()
 // receiver is lost, but if the ESP32 crashes, the vehicle could get out of control!! ***
 
 void esc()
-{ // ESC main function ================================
-  // Gear dependent ramp speed for acceleration & deceleration
-static int16_t qSpeed=0;
-if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
-{
-    // Simulate engine mass, generate RPM signal
-    if (xQueueReceive(speedDataQueue, &qSpeed, (TickType_t)10) == pdTRUE)
-    {
-      DEBUG_PRINT(" received data");
-    }
-    xSemaphoreGive(xVescSemaphore); // Now free or "Give" the semaphore for others.
-}
+{ 
 
+  // ESC main function ================================
+  // Gear dependent ramp speed for acceleration & deceleration
 #if defined VIRTUAL_3_SPEED
   escRampTime = escRampTimeThirdGear * 10 / virtualManualGearRatio[selectedGear];
 
@@ -1859,7 +1847,9 @@ if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
       driveRampGain = 1;
     }
 
-    currentSpeed = (uint16_t) qSpeed;
+  currentSpeed =  get_vesc_throttle();
+  
+    
   }
 }
 
@@ -1992,14 +1982,14 @@ void get_fake_data()
   float val;
   val = 2 * PI / 360;
   static unsigned long fakeTimer = millis();
-  if (millis() - fakeTimer > 200 && vescSwitchState)
+  if (millis() - fakeTimer > 250 && vescSwitchState)
   {
 #if FAKE_VESC_DATA == 0
 
     vescErpm = MAX_VESC_ERPM * sin(val * angle);
-     DEBUG_PRINT("Fake Vesc Erpm :%.2f\n",vescErpm);
+     //DEBUG_PRINT("Fake Vesc Erpm :%.2f\n",vescErpm);
     vescPid = 100 * sin(90 - (val * angle));
-     DEBUG_PRINT("Fake Vesc pid : %.2f\n",vescPid);
+     //DEBUG_PRINT("Fake Vesc pid : %.2f\n",vescPid);
     angle += 1;
     if (angle > 180)
     {
@@ -2031,6 +2021,7 @@ void check_sound_triggered( uint8_t sound  )
       {
         hornLatch = true;
         hornTrigger = true;
+      
       }
       else
       {
@@ -2053,7 +2044,7 @@ void check_sound_triggered( uint8_t sound  )
       {
         excuseMeLatch = false;
         excuseMeTrigger = false;
-  
+       
       }
 
       DEBUG_PRINT(" excuse triggered \n");
@@ -2066,6 +2057,7 @@ void check_sound_triggered( uint8_t sound  )
       {
         sirenLatch = true;
         sirenTrigger = true;
+        
 
       }
       else
@@ -2134,12 +2126,13 @@ void vescTask_func(void *pvParameters)
   for (;;)
   {
 
-    if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
+  if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
     {
 #ifdef FAKE_VESC_DATA
-      get_fake_data(); // generate sin of erpm data and cos of pid data.
+      get_fake_data();
       vescSwitchState = FLOAT_SWITCH_ON;
       absErpm = abs(vescErpm);
+      xQueueSend(speedAvgDataQueue, &absErpm, (TickType_t)0);
 #else
 
       VESC.soundUpdate();
@@ -2151,18 +2144,24 @@ void vescTask_func(void *pvParameters)
       vescSwitchState = (FloatSwitchState)VESC.get_switch_state();
      
 #endif
+currentThrottle=get_vesc_throttle();
+mapThrottle();
+xSemaphoreGive(xVescSemaphore); // Now free or "Give" the semaphore for others.
+  }
+
+
 
 #ifdef ENABLE_NOTIFY
       // 檢查開關前一個狀態跟現在狀態有改變才觸發音效 , 避免音效一直觸發.
       if (lastVescSwitchState != vescSwitchState && vescSwitchState == FLOAT_SWITCH_ON && !engineSoundEnable)
       {
-        DEBUG_PRINT(" Switch State: %s\n", vescSwitchState ? "ON " : "OFF");
+        //DEBUG_PRINT(" Switch State: %s\n", vescSwitchState ? "ON " : "OFF");
         notifyTrigger = true;
       }
 
       if (lastNotifyTrigger != notifyTrigger && engineSoundEnable == false)
       {
-        DEBUG_PRINT("   notifyTrigger : %s\n", notifyTrigger ? "true" : "false");
+        //DEBUG_PRINT("   notifyTrigger : %s\n", notifyTrigger ? "true" : "false");
         notifyTrigger ? SET_AUDIO_SOURCE_ESP() : SET_AUDIO_SOURCE_CSR();
       }
       lastNotifyTrigger = notifyTrigger;
@@ -2185,10 +2184,17 @@ void vescTask_func(void *pvParameters)
       lastVescSwitchState = vescSwitchState;
 
       
-       mapThrottle();
-      xSemaphoreGive(xVescSemaphore); // Now free or "Give" the semaphore for others.
-    }
+    
+     
+   
 
+ // if (xSemaphoreTake(xRpmSemaphore, portMAX_DELAY))
+ //{
+   
+  
+
+  // xSemaphoreGive(xRpmSemaphore); // Now free or "Give" the semaphore for others.
+ // }
    
     // Core ID debug
 #if defined CORE_DEBUG
@@ -2206,7 +2212,7 @@ void warningTask_func(void *pvParameters)
 {
   //over speed 
   int  speedCount = 0;
-  float speedAverage = 0, speedSum = 0,  speedKmh = 0 ;
+  float speedAverage = 0,speedKmh=0 ;
   float speedRawData[NUM_MEASUREMENTS];
   // reset val
   sirenTrigger = false;
@@ -2217,7 +2223,7 @@ void warningTask_func(void *pvParameters)
   hornLatch = false;
   sirenLatch = false;
   excuseMeLatch = false;
-
+  bool setAudioSourceToESP=0;
   unsigned long lowVoltTriggerTime=0; 
   unsigned long overSpeedTriggerTime = 0;
   for (;;)
@@ -2265,7 +2271,7 @@ void warningTask_func(void *pvParameters)
           {
 
             lowVoltageTrigger = true;
-
+              DEBUG_PRINT("low Battery Level: %.2f\n", lowBattLevel );
             // 超速 把variable timer stop
             if (engineSoundEnable)
             {
@@ -2303,7 +2309,7 @@ void warningTask_func(void *pvParameters)
               // store average in global variable speedAvg
               speedKmh = (speedAverage / (MOTOR_POLES / 2));
               speedKmh = ((speedKmh / 60) * WHEEL_DIAMETER * M_PI / GEAR_RATIO) * 3.6;
-              // DEBUG_PRINT(" Speed average data  : %.2f km/H \n", speedKmh);
+             // DEBUG_PRINT(" Speed average data  : %.2f km/H \n", speedKmh);
               speedCount = 0;
              }
           }
@@ -2351,22 +2357,18 @@ void warningTask_func(void *pvParameters)
             engineState = RUNNING;
           }
         }
-        //當引擎聲關閉時,檢查音效是否觸發,如果是將切換音源到esp端
-        if (!engineSoundEnable)
+        // 當引擎聲關閉時,檢查音效是否觸發,如果是將切換音源到esp端
+         setAudioSourceToESP = engineSoundEnable || sirenTrigger || excuseMeTrigger || hornTrigger || overSpeedTrigger || lowVoltageTrigger;
+
+        if (setAudioSourceToESP)
         {
-          if (sirenTrigger || excuseMeTrigger || hornTrigger || overSpeedTrigger ||lowVoltageTrigger)
-          {
-            SET_AUDIO_SOURCE_ESP();
-            DEBUG_PRINT(" Sound on ESP32 \n");
-          }
-          else
-          {
-            SET_AUDIO_SOURCE_CSR();
-            DEBUG_PRINT(" Sound on CSR \n");
-          }
-        } else 
-        { 
-           SET_AUDIO_SOURCE_ESP();
+          SET_AUDIO_SOURCE_ESP();
+          //DEBUG_PRINT("Sound on ESP32\n");
+        }
+        else
+        {
+          SET_AUDIO_SOURCE_CSR();
+         // DEBUG_PRINT("Sound on CSR\n");
         }
       lastOverSpeedTrigger=overSpeedTrigger;
       lastLowVoltTrigger=lowVoltageTrigger;
@@ -2563,6 +2565,13 @@ void setup()
       xSemaphoreGive((xVescSemaphore)); // Make the RPM variable available for use, by "Giving" the Semaphore.
   }
 
+  if (xRpmSemaphore == NULL) // Check to confirm that the RPM Semaphore has not already been created.
+  {
+    xRpmSemaphore = xSemaphoreCreateMutex(); // Create a mutex semaphore we will use to manage variable access
+    if ((xRpmSemaphore) != NULL)
+      xSemaphoreGive((xRpmSemaphore)); // Make the RPM variable available for use, by "Giving" the Semaphore.
+  }
+
   // Refresh sample intervals (important, because MAX_RPM_PERCENTAGE was probably changed above)
   maxSampleInterval = 4000000 / sampleRate;
   minSampleInterval = 4000000 / sampleRate * 100 / MAX_RPM_PERCENTAGE;
@@ -2655,7 +2664,7 @@ void loop()
      lastEngineSoundEnable = engineSoundEnable;
   }
    
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
   }
 }
 

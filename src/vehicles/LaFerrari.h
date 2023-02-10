@@ -4,20 +4,20 @@
 
 // Sound files (22'050 Hz, 8 bit PCM recommended) -----------------------------------------------------------------------
 // Choose the start sound (uncomment the one you want) --------
-volatile int startVolumePercentage = 160; // Adjust the start volume (usually = 100%)
+volatile int startVolumePercentage = 150; // Adjust the start volume (usually = 100%)
 #include "sounds/LaFerrariStart.h" // Ferrari LaFerrari, V12
 
 // Choose the motor idle sound (uncomment the one you want) --------
-volatile int idleVolumePercentage =70; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
-volatile int engineIdleVolumePercentage =60; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
-volatile int fullThrottleVolumePercentage = 150; // Volume Percentage while full throttle (for rev sound as well)
+volatile int idleVolumePercentage = 80; // Adjust the idle volume (usually = 100%, more also working, depending on sound, 50 - 60% if additional diesel knock sound is used)
+volatile int engineIdleVolumePercentage = 60; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
+volatile int fullThrottleVolumePercentage = 130; // Volume Percentage while full throttle (for rev sound as well)
 #include "sounds/LaFerrariIdle.h" // Jaguar XJS V12
 //#include "sounds/idleDummy.h" // Dummy
 
 // Choose the motor revving sound (uncomment the one you want) --------
 #define REV_SOUND // uncomment this, if you want to use the separate, optional rev sound
 volatile int revVolumePercentage = 120; // Adjust the idle volume (usually = 100%, more also working, depending on sound)
-volatile int engineRevVolumePercentage = 40; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
+volatile int engineRevVolumePercentage = 60; // the engine volume will be throttle dependent (usually = 40%, never more than 100%!)
 volatile const uint16_t revSwitchPoint = 50; // The rev sound is played instead of the idle sound above this point
 volatile const uint16_t idleEndPoint = 300; // above this point, we have 100% rev and 0% idle sound volume (usually 500, min. 50 more than revSwitchPoint)
 volatile const uint16_t idleVolumeProportionPercentage = 100; // The idle sound volume proportion (rest is rev proportion) below "revSwitchPoint" (about 90 - 100%, never more than 100)
@@ -26,10 +26,10 @@ volatile const uint16_t idleVolumeProportionPercentage = 100; // The idle sound 
 #endif
 
 // Choose the jake brake sound (uncomment the one you want) --------
-#define JAKE_BRAKE_SOUND // uncomment this, if you want to use the jake brake sound
-volatile int jakeBrakeVolumePercentage = 150; // Adjust the max. volume (usually = 150%)
-volatile int jakeBrakeIdleVolumePercentage = 50; // Adjust the min. volume (usually = 80%)
-volatile int jakeBrakeMinRpm = 100; // Adjust the min. RPM for the jake brake (around 100)
+//#define JAKE_BRAKE_SOUND // uncomment this, if you want to use the jake brake sound
+volatile int jakeBrakeVolumePercentage = 140; // Adjust the max. volume (usually = 150%)
+volatile int jakeBrakeIdleVolumePercentage = 0; // Adjust the min. volume (usually = 80%)
+volatile int jakeBrakeMinRpm = 200; // Adjust the min. RPM for the jake brake (around 100)
 #ifdef JAKE_BRAKE_SOUND
 #include "sounds/JakeBrake.h" // CAT V8 Jake Brake sound
 #endif
@@ -46,14 +46,14 @@ volatile int dieselKnockAdaptiveVolumePercentage = 50; // Adjust the Diesel knoc
 #define RPM_DEPENDENT_KNOCK // Knock volume also depending on engine RPM *****************
 #ifdef RPM_DEPENDENT_KNOCK // These parameters are for RPM dependent knock mode only:
 uint8_t minKnockVolumePercentage = 5; // percentage, if at knock start RPM (about 5 - 80)
-uint16_t knockStartRpm = 300; // starting @ this RPM (about 50 - 400)
+uint16_t knockStartRpm = 400; // starting @ this RPM (about 50 - 400)
 #endif // ********************************************************************************
 //#include "sounds/DieselKnockDummy.h" // Dummy
 #include "sounds/LaFerrariKnock.h" // Ferrari LaFerrari, V12
 
 // Adjust the additional turbo sound (set "turboVolumePercentage" to "0", if you don't want it) --------
-volatile int turboVolumePercentage =70; // Adjust the turbo volume (usually = 70%)
-volatile int turboIdleVolumePercentage = 10; // the turbo volume will be engine rpm dependent (usually = 10%)
+volatile int turboVolumePercentage = 0; // Adjust the turbo volume (usually = 70%)
+volatile int turboIdleVolumePercentage = 0; // the turbo volume will be engine rpm dependent (usually = 10%)
 #include "sounds/TurboWhistle.h" // Turbo sound, playing in parallel with engine sound!
 
 // Adjust the additional supercharger sound (set "chargerVolumePercentage" to "0", if you don't want it) --------
@@ -80,15 +80,14 @@ volatile int fanStartPoint = 0; // Volume will raise above this point (250 for T
 #include "sounds/GenericFan.h" // Generic engine cooling fan
 
 // Choose the horn sound (uncomment the one you want) --------
-volatile int hornVolumePercentage = 250; // Adjust the horn volume (usually = 100%)
+volatile int hornVolumePercentage = 100; // Adjust the horn volume (usually = 100%)
 //#include "sounds/TrainHorn.h" // American train horn
 //#include "sounds/HornblastersOUTLAWTrainHornShort.h" // Hornblasters outlaw train horn short
 //#include "sounds/ManTgeHorn.h" // MAN TGE truck horn (King Hauler)
 //#include "sounds/westinghouseHorn.h" // American truck horn (the best)
 //#include "sounds/FireTruckAirHorn.h" // US fire truck air horn
 #include "sounds/CarHorn2.h" // A boring car horn
-//#include "sounds/CarHorn.h" // A boring car horn
-///#include "sounds/TruckHorn.h" // A generic truck horn
+//#include "sounds/TruckHorn.h" // A generic truck horn
 //#include "sounds/PeterbiltHorn.h" // A Peterbilt truck horn
 //#include "sounds/2ToneTruckHorn.h" // A 2 tone truck horn
 //#include "sounds/CaboverCAThorn.h" // Cabover with CAT engine horn
@@ -96,9 +95,9 @@ volatile int hornVolumePercentage = 250; // Adjust the horn volume (usually = 10
 //#include "sounds/ScaniaV8trainHorn.h" // Scania with train horn
 
 // Choose the siren / additional horn sound (uncomment the one you want) --------
-volatile int sirenVolumePercentage = 250; // Adjust the siren volume (usually = 100%)
-//#include "sounds/sirenDummy.h" // If you don't want siren sound
-#include "sounds/PoliceSiren.h" // US Police siren
+volatile int sirenVolumePercentage = 200; // Adjust the siren volume (usually = 100%)
+#include "sounds/PoliceSiren.h"// If you don't want siren sound
+//#include "sounds/UsPoliceSiren.h" // US Police siren
 //#include "sounds/FireTruckAirSiren.h" // US fire truck air siren (King Hauler)
 //#include "sounds/FeuerwehrMartinshorn.h" // European Feuerwehr Martinshorn
 //#include "sounds/IrishFireEngineHorn.h" // Irish fire truck horn
@@ -106,36 +105,36 @@ volatile int sirenVolumePercentage = 250; // Adjust the siren volume (usually = 
 //#include "sounds/PostAutoHorn.h" // The typical Swiss post bus horn
 
 // Choose the air brake release sound (uncomment the one you want) --------
-volatile int brakeVolumePercentage = 200; // Adjust the brake volume (usually = 200%)
+volatile int brakeVolumePercentage = 150; // Adjust the brake volume (usually = 200%)
 //#include "sounds/AirBrakeDummy.h" // If you don't want air brake sound
 //#include "sounds/TruckAirBrakes.h" // Short truck air brake sound
-#include "sounds/TruckAirBrakesLong.h" // Long truck air brake sound
+//#include "sounds/TruckAirBrakesLong.h" // Long truck air brake sound
 //#include "sounds/TruckAirBrakes2.h" // Another truck air brake sound
 //#include "sounds/AirBrakeSqueak.h" // Squeaky air brake sound
-//#include "sounds/AirBrakeSqueak2.h" // Squeaky air brake sound
+#include "sounds/AirBrakeSqueak2.h" // Squeaky air brake sound
 //#include "sounds/UralBrakeSqueak.h" // URAL 4320 air brake sound
 
 // Choose the parking brake engaging sound (uncomment the one you want) --------
 volatile int parkingBrakeVolumePercentage = 150; // Adjust the brake volume (usually = 200%)
-//#include "sounds/ParkingBrakeDummy.h" // If you don't want parking brake sound
-#include "sounds/ParkingBrake.h" // Parking brake sound
+#include "sounds/ParkingBrakeDummy.h" // If you don't want parking brake sound
+//#include "sounds/ParkingBrake.h" // Parking brake sound
 
 // Choose the gear shifting sound (uncomment the one you want) --------
-volatile int shiftingVolumePercentage = 200; // Adjust the shifting volume (usually = 200%)
+volatile int shiftingVolumePercentage = 100; // Adjust the shifting volume (usually = 200%)
 //#include "sounds/AirShiftingDummy.h" // If you don't want pneumatic shifting sound
-#include "sounds/AirShifting.h" // Pneumatic shifting sound
-//#include "sounds/ClunkingGearShifting.h" // Manual clunking shifting sound
+//#include "sounds/AirShifting.h" // Pneumatic shifting sound
+#include "sounds/ClunkingGearShifting.h" // Manual clunking shifting sound
 
 // Choose the additional "sound1" (uncomment the one you want) --------
-volatile int sound1VolumePercentage = 150; // Adjust the sound1 volume (usually = 100%)
+volatile int sound1VolumePercentage = 100; // Adjust the sound1 volume (usually = 100%)
 //#include "sounds/EMDLocomotiveBell.h" // American EMD locomotive bell
 //#include "sounds/007JamesBond.h" // James Bond melody
 //#include "sounds/M2Fire.h" // M2 salve
 //#include "sounds/GlenCanyon.h" // Glen Canyon country song for truckers ;-)
-//#include "sounds/welcome.h" // opening and closing the door
-
+//#include "sounds/door.h" // opening and closing the door
+//#include "sounds/welcome.h"
 // Choose the reversing beep sound --------
-volatile int reversingVolumePercentage = 90; // Adjust the reversing sound volume (usually = 70%)
+volatile int reversingVolumePercentage = 50; // Adjust the reversing sound volume (usually = 70%)
 #include "sounds/TruckReversingBeep.h" // 1000Hz peep sound
 
 // Choose the indicator / turn signal options --------
@@ -146,7 +145,7 @@ const boolean INDICATOR_DIR = true; // adjust indicator direction with true or f
 
 // Choose the tire squealing sound (uncomment the ones you want) --------
 //#define TIRE_SQUEAL
-volatile int tireSquealVolumePercentage = 100; // Adjust the tire squeal volume
+volatile int tireSquealVolumePercentage = 160; // Adjust the tire squeal volume
 #include "sounds/TireSqueal2.h"
 
 // Choose the light options --------
@@ -164,8 +163,8 @@ const uint8_t escAccelerationSteps = 3; // determines, how fast the ESC is able 
 
 // Gearbox parameters ---------------------------------------------------------------------------------------------------
 const boolean automatic = true; // false = linear rpm curve, true = automatic transmission with torque converter is simulated (use it, if you don't have a real shifting transmission)
-#define NumberOfAutomaticGears 4 // <<------- Select 3, 4 or 6 gears!
-const boolean doubleClutch = false; // do not activate it at the same time as automatic!
+#define NumberOfAutomaticGears 6 // <<------- Select 3, 4 or 6 gears!
+const boolean doubleClutch =false; // do not activate it at the same time as automatic!
 const boolean shiftingAutoThrottle = false; // For Tamiya 3 speed tansmission, throttle is altered for synchronizing, if "true"
 
 // Clutch parameters ---------------------------------------------------------------------------------------------------
