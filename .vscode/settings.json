@@ -6,6 +6,7 @@
         "string": "cpp",
         "*.tcc": "cpp",
         "cmath": "cpp",
-        "cstdlib": "cpp"
+        "cstdlib": "cpp",
+        "system_error": "cpp"
     }
 }

@@ -19,7 +19,7 @@
 
 #include <Arduino.h>
 //#define DUTY_TO_THROTTLE // you want to vesc dutycycle as throttle else use abd ermp as throttle 
-//#define DEBUG 0
+#define DEBUG 1
 #ifdef DEBUG
 #define DEBUG_PRINT(...) Serial.printf(__VA_ARGS__)
 #else
@@ -158,7 +158,15 @@ volatile int notifyVolumePercentage=150;
 #include "vehicles/sounds/notify.h"
 #endif
 
+typedef struct{
+	float a0, a1, a2, b1, b2;
+	float z1, z2;
+} Biquad;
 
+typedef enum {
+	BQ_LOWPASS,
+	BQ_HIGHPASS
+} BiquadType;
 
 
 #endif
