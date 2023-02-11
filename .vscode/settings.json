@@ -1,6 +1,6 @@
 {
     "C_Cpp.dimInactiveRegions": true,
-    "commentTranslate.targetLanguage": "en",
+    "commentTranslate.targetLanguage": "zh-TW",
     "files.associations": {
         "array": "cpp",
         "string": "cpp",

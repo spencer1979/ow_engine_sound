@@ -19,7 +19,7 @@
 
 #include <Arduino.h>
 //#define DUTY_TO_THROTTLE // you want to vesc dutycycle as throttle else use abd ermp as throttle 
-#define DEBUG 1
+#define DEBUG 0
 #ifdef DEBUG
 #define DEBUG_PRINT(...) Serial.printf(__VA_ARGS__)
 #else
@@ -140,7 +140,7 @@ typedef enum
 
 
 //additional sound setting 
-volatile int startUpWarningPercentage=100; //start-up warning sound 
+volatile int startUpWarningPercentage=60; //start-up warning sound 
 #include "vehicles/sounds/welcome.h"
 volatile int overSpeedVolumePercentage=300; // over speed sound 
 #include "vehicles/sounds/overSpeed.h"

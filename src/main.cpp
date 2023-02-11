@@ -201,7 +201,7 @@ int16_t currentThrottleFaded = 0; // faded throttle for volume calculations etc.
 // Engine
 const int16_t maxRpm = 500;       // always 1000
 const int16_t minRpm = 0;         // always 0
-int32_t currentRpm = 0;           // 0 - 1000 (signed required!)
+int32_t currentRpm = 0;           // 0 - 500 (signed required!)
 volatile uint8_t engineState = 0; // Engine state
 
 enum EngineState // Engine state enum
@@ -1119,16 +1119,8 @@ int16_t map_int16(int16_t x, int16_t in_min, int16_t in_max, int16_t out_min, in
 static int16_t get_vesc_throttle()
 {
   int16_t throttle;
-  throttle = (int16_t)absErpm;
-  if (throttle > MAX_VESC_ERPM)
-  {
-    throttle = MAX_VESC_ERPM;
-  }
-  if (throttle < MIN_VESC_ERPM)
-  {
-    throttle = MIN_VESC_ERPM;
-  }
-  throttle = map_int16(throttle, MIN_VESC_ERPM, MAX_VESC_ERPM, minRpm, maxRpm);
+  throttle = (int16_t)fabs(vescPid);
+  throttle = map_int16(throttle, 0, 100, minRpm, maxRpm);
   if (throttle > maxRpm)
   {
     throttle = maxRpm;
@@ -1137,7 +1129,33 @@ static int16_t get_vesc_throttle()
   {
     throttle = minRpm;
   }
+
   return throttle;
+}
+
+
+static int16_t get_vesc_speed()
+{
+  int16_t speed;
+  speed = (int16_t)absErpm;
+  if (speed > MAX_VESC_ERPM)
+  {
+    speed = MAX_VESC_ERPM;
+  }
+  if (speed < MIN_VESC_ERPM)
+  {
+    speed = MIN_VESC_ERPM;
+  }
+  speed = map_int16(speed, MIN_VESC_ERPM, MAX_VESC_ERPM, minRpm, maxRpm);
+  if (speed > maxRpm)
+  {
+    speed = maxRpm;
+  }
+  if (speed < minRpm)
+  {
+    speed = minRpm;
+  }
+  return speed;
 }
 
 //
@@ -2005,7 +2023,8 @@ void get_fake_data()
 }
 #endif
 
-
+/// @brief Read vesc data nd confirm which function is enabled
+/// @param soundThe data read back by Uart
 void check_sound_triggered( uint8_t sound  )
 { 
   static uint8_t hornClickCount=0;
@@ -2117,96 +2136,6 @@ void engineTask_func(void *pvParameters)
   }
 }
 
-void vescTask_func(void *pvParameters)
-{
-
-  engineOn = false;
-  vescSwitchState = FLOAT_SWITCH_OFF;
-
-  for (;;)
-  {
-
-  if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
-    {
-#ifdef FAKE_VESC_DATA
-      get_fake_data();
-      vescSwitchState = FLOAT_SWITCH_ON;
-      absErpm = abs(vescErpm);
-      xQueueSend(speedAvgDataQueue, &absErpm, (TickType_t)0);
-#else
-
-      VESC.soundUpdate();
-      vescErpm = biquad_process(&erpmBiquad, VESC.get_erpm());
-      absErpm = fabsf(vescErpm);
-       // send data to warnning task for speed check
-      xQueueSend(speedAvgDataQueue, &absErpm, (TickType_t)0);
-      vescPid = VESC.get_pid_output();
-      vescSwitchState = (FloatSwitchState)VESC.get_switch_state();
-     
-#endif
-currentThrottle=get_vesc_throttle();
-mapThrottle();
-xSemaphoreGive(xVescSemaphore); // Now free or "Give" the semaphore for others.
-  }
-
-
-
-#ifdef ENABLE_NOTIFY
-      // 檢查開關前一個狀態跟現在狀態有改變才觸發音效 , 避免音效一直觸發.
-      if (lastVescSwitchState != vescSwitchState && vescSwitchState == FLOAT_SWITCH_ON && !engineSoundEnable)
-      {
-        //DEBUG_PRINT(" Switch State: %s\n", vescSwitchState ? "ON " : "OFF");
-        notifyTrigger = true;
-      }
-
-      if (lastNotifyTrigger != notifyTrigger && engineSoundEnable == false)
-      {
-        //DEBUG_PRINT("   notifyTrigger : %s\n", notifyTrigger ? "true" : "false");
-        notifyTrigger ? SET_AUDIO_SOURCE_ESP() : SET_AUDIO_SOURCE_CSR();
-      }
-      lastNotifyTrigger = notifyTrigger;
-#endif
-      
-      if (vescSwitchState == FLOAT_SWITCH_ON && engineSoundEnable)
-      {
-
-        engineOn = true;
-        engineOffTimer = millis();
-      }
-      else
-      {
-        if (millis() - engineOffTimer > engineOffDelay)
-        {
-          engineOn = false;
-        }
-      }
-
-      lastVescSwitchState = vescSwitchState;
-
-      
-    
-     
-   
-
- // if (xSemaphoreTake(xRpmSemaphore, portMAX_DELAY))
- //{
-   
-  
-
-  // xSemaphoreGive(xRpmSemaphore); // Now free or "Give" the semaphore for others.
- // }
-   
-    // Core ID debug
-#if defined CORE_DEBUG
-    Serial.print("Running on core ");
-    Serial.println(coreId);
-#endif
-    // check_mute(500); // 500mS to check mute or unmute.
-    //  Feeding the RTC watchtog timer is essential!
-  }
-}
-//warning task
-//check over speed and under voltage
 
 void warningTask_func(void *pvParameters)
 {
@@ -2214,7 +2143,7 @@ void warningTask_func(void *pvParameters)
   int  speedCount = 0;
   float speedAverage = 0,speedKmh=0 ;
   float speedRawData[NUM_MEASUREMENTS];
-  // reset val
+  // reset all the sound 
   sirenTrigger = false;
   excuseMeTrigger = false;
   hornTrigger = false;
@@ -2230,36 +2159,34 @@ void warningTask_func(void *pvParameters)
   { // 如果啟動後vesc連接
     if (vescConnected)
     {
-        if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
-        { // read data from vesc
-          VESC.advancedUpdate();
-          soundTriggered = VESC.get_sound_triggered();
-          // overSpeedLimit changed !!
-          if (overSpeedLimit != (float)VESC.get_over_speed_value())
-          {
-          
+     if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
+     { // read data from vesc
+        VESC.advancedUpdate();
+        soundTriggered = VESC.get_sound_triggered();
+        // overSpeedLimit changed !!
+        if (overSpeedLimit != (float)VESC.get_over_speed_value())
+        {
+
           overSpeedLimit = (float)VESC.get_over_speed_value();
-          DEBUG_PRINT("overSpeed limit changed!! %.2f\n",overSpeedLimit);
-          }
-          // lowBattLevel changed !!
-          if (lowBattLevel != VESC.get_low_battery_warning_level())
-          {
-         
-          lowBattLevel = VESC.get_low_battery_warning_level();
-           DEBUG_PRINT("lowBattLevel changed!!%.2f\n", lowBattLevel );
-
-          }
-
-           if ( masterVolume!=VESC.get_engine_sound_volume())
-
-           {
-            
-            masterVolume=VESC.get_engine_sound_volume();
-            DEBUG_PRINT("masterVolume changed!!%d\n", masterVolume );
-
-           }
-          xSemaphoreGive(xVescSemaphore); // Now free or "Give" the semaphore for others.
+          DEBUG_PRINT("overSpeed limit changed!! %.2f\n", overSpeedLimit);
         }
+        // lowBattLevel changed !!
+        if (lowBattLevel != VESC.get_low_battery_warning_level())
+        {
+
+          lowBattLevel = VESC.get_low_battery_warning_level();
+          DEBUG_PRINT("lowBattLevel changed!!%.2f\n", lowBattLevel);
+        }
+
+        if (masterVolume != VESC.get_engine_sound_volume())
+
+        {
+
+          masterVolume = VESC.get_engine_sound_volume();
+          DEBUG_PRINT("masterVolume changed!!%d\n", masterVolume);
+        }
+        xSemaphoreGive(xVescSemaphore);//Now free or "Give" the semaphore for others.
+     }
         //檢查按鈕是否按下,觸發音效
 
         check_sound_triggered(soundTriggered);
@@ -2272,7 +2199,7 @@ void warningTask_func(void *pvParameters)
 
             lowVoltageTrigger = true;
               DEBUG_PRINT("low Battery Level: %.2f\n", lowBattLevel );
-            // 超速 把variable timer stop
+            // 超速把variable timer stop
             if (engineSoundEnable)
             {
               stop_variable_playback_timer();
@@ -2309,7 +2236,7 @@ void warningTask_func(void *pvParameters)
               // store average in global variable speedAvg
               speedKmh = (speedAverage / (MOTOR_POLES / 2));
               speedKmh = ((speedKmh / 60) * WHEEL_DIAMETER * M_PI / GEAR_RATIO) * 3.6;
-             // DEBUG_PRINT(" Speed average data  : %.2f km/H \n", speedKmh);
+             DEBUG_PRINT(" Speed average data  : %.2f km/H \n", speedKmh);
               speedCount = 0;
              }
           }
@@ -2374,7 +2301,7 @@ void warningTask_func(void *pvParameters)
       lastLowVoltTrigger=lowVoltageTrigger;
     }
 
-   // vTaskDelay(200 / portTICK_PERIOD_MS);
+   vTaskDelay(200 / portTICK_PERIOD_MS);
   }
   }
 
@@ -2406,21 +2333,35 @@ randomSeed(millis());
   vescConnected = false;
   lastEngineSoundEnable = false;
   engineSoundEnable = false;
-  unsigned long wait_time = millis() + 4000; //10秒鐘檢查,超時就僅能使用藍芽喇叭功能
-  biquad_config(&erpmBiquad, BQ_LOWPASS, 0.00125 );
-  while (millis() < wait_time)
-  {
-   
-    if (VESC.get_vesc_ready()) // check vesc fw version , if not connect will get 0.0
+  biquad_config(&erpmBiquad, BQ_LOWPASS, 0.03);
+  int tries = 0;
+
+  do {
+    unsigned long startTime = millis();
+    while (millis() - startTime < 5000) 
     {
-      vescConnected = true;
-      DEBUG_PRINT(" VESC is connected\n");
-      break;
+      if (VESC.get_vesc_ready()) // check vesc fw version , if not connect will get 0.0
+      {
+        vescConnected = true;
+        DEBUG_PRINT(" VESC is connected\n");
+       break;
+    
+      } 
     
     }
-    
-  }
+    if (vescConnected)
+    {
+      break;
+    }
+    else
+    {
+      tries++;
+      DEBUG_PRINT("UART retry time:%d\n", tries);
+    }
 
+  } while (tries < 3);
+   
+  DEBUG_PRINT("Reading failed, no data received.\n");
   if (vescConnected)
   {
     //檢查哪些選項是啟動的 
@@ -2430,27 +2371,7 @@ randomSeed(millis());
     DEBUG_PRINT("Start warning Enable : %s\n", startWarnEnable ? "true" :"false");
     DEBUG_PRINT("Enable sound Enable : %s\n", engineSoundEnable ? "true" :"false");
     DEBUG_PRINT("Low Battery Warn Enable : %s\n", engineSoundEnable ? "true" :"false");
-    //建立task 
-
-     if (xTaskCreatePinnedToCore(warningTask_func, "warningTask", 1024 * 10, NULL, 2, &warningTaskHandle, 0) == pdPASS)
-     // create vesc comunication task
-     {
-      DEBUG_PRINT("Task warningTask created successfully\r\n");
-     }
-     else
-     {
-      DEBUG_PRINT("Task Failed to create warningTask\r\n");
-     }
-     
-     if (xTaskCreatePinnedToCore(vescTask_func, "vescTask", 1024 * 8, NULL, 1, &vescTaskHandle, 0) == pdPASS)
-     // create vesc comunication task
-     {
-      DEBUG_PRINT("Task vescTask created successfully\r\n");
-     }
-     else
-     {
-      DEBUG_PRINT("Task Failed to create vescTask\r\n");
-     }
+    
      
     //取得設定資料
     if (VESC.advancedUpdate())
@@ -2507,8 +2428,18 @@ randomSeed(millis());
       stop_variable_playback_timer();
       SET_CSR_POWER_ON();
     }
-   
-
+   //建立task 
+     engineOn = false;
+    vescSwitchState = FLOAT_SWITCH_OFF;
+     if (xTaskCreatePinnedToCore(warningTask_func, "warningTask", 1024 * 10, NULL, 2, &warningTaskHandle, 0) == pdPASS)
+     // create vesc comunication task
+     {
+      DEBUG_PRINT("Task warningTask created successfully\r\n");
+     }
+     else
+     {
+      DEBUG_PRINT("Task Failed to create warningTask\r\n");
+     }
   }
   else
   {
@@ -2592,6 +2523,148 @@ void setup()
 
 }
 
+///
+static void check_vesc_enable()
+{
+if (vescConnected)
+    {
+     if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
+     {
+        vescEnableData = VESC.get_enable_item_data();
+        xSemaphoreGive(xVescSemaphore); // Now free or "Give" the semaphore for others.
+     }
+     // always check which item disable /enable
+     // startWarnEnable=CHECK_BIT(vescEnableData,START_UP_WARNING_ENABLE_MASK_BIT);
+     engineSoundEnable = CHECK_BIT(vescEnableData, ENGINE_SOUND_ENABLE_MASK_BIT);
+
+     // state changed
+     if (lastEngineSoundEnable != engineSoundEnable)
+
+     {
+
+        engineOn = false;
+        if (engineSoundEnable == false)
+        {
+          DEBUG_PRINT("ENGINE SOUND STATE Change to CSR!\n");
+
+          // delete task
+          if (engineTaskHandle != NULL)
+          {
+
+            vTaskDelete(engineTaskHandle);
+            engineTaskHandle = NULL;
+            if (engineTaskHandle == NULL)
+              DEBUG_PRINT("Task vescTask deleted successfully!\n");
+          }
+          stop_variable_playback_timer();
+          change_audio_source(AUDIO_SOURCE_CSR);
+          SET_CSR_POWER_ON();
+        }
+
+        else
+        {
+          DEBUG_PRINT("ENGINE SOUND STATE Change to ESP32 !\n");
+          // create engine sound TASK for engine sound
+          if (xTaskCreatePinnedToCore(engineTask_func, "engineTask", 1024 * 3, NULL, 1, &engineTaskHandle, 1) == pdPASS)
+          {
+            DEBUG_PRINT("Task engineTask created successfully\n");
+            start_variable_playback_timer();
+            change_audio_source(AUDIO_SOURCE_ESP32);
+            SET_CSR_POWER_OFF();
+          }
+          else
+          {
+            DEBUG_PRINT("Task Failed to create engineTask\n");
+          }
+        }
+     }
+     // update status
+     lastEngineSoundEnable = engineSoundEnable;
+    }
+    
+
+}
+
+
+static void get_vesc_engine()
+{
+  if (vescConnected) // vesc connected
+  {
+    if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
+    {
+#ifdef FAKE_VESC_DATA
+      get_fake_data();
+      vescSwitchState = FLOAT_SWITCH_ON;
+      absErpm = abs(vescErpm);
+      xQueueSend(speedAvgDataQueue, &absErpm, (TickType_t)0);
+#else
+
+      VESC.soundUpdate();
+      vescErpm = biquad_process(&erpmBiquad, VESC.get_erpm());
+      DEBUG_PRINT("vescErpm %.2F\n", vescErpm);
+      absErpm = fabsf(vescErpm);
+      // send data to warnning task for speed check
+      xQueueSend(speedAvgDataQueue, &absErpm, (TickType_t)0);
+      vescPid = VESC.get_pid_output();
+      DEBUG_PRINT("vescPid %.2F\n", vescPid);
+
+#endif
+
+      xSemaphoreGive(xVescSemaphore); // Now free or "Give" the semaphore for others.
+    }
+
+    vescSwitchState = (FloatSwitchState)VESC.get_switch_state();
+    currentThrottle = get_vesc_throttle();
+    mapThrottle();
+
+#ifdef ENABLE_NOTIFY
+    // 檢查開關前一個狀態跟現在狀態有改變才觸發音效 , 避免音效一直觸發.
+    if (lastVescSwitchState != vescSwitchState && vescSwitchState == FLOAT_SWITCH_ON && !engineSoundEnable)
+    {
+      // DEBUG_PRINT(" Switch State: %s\n", vescSwitchState ? "ON " : "OFF");
+      notifyTrigger = true;
+    }
+
+    if (lastNotifyTrigger != notifyTrigger && engineSoundEnable == false)
+    {
+      // DEBUG_PRINT("   notifyTrigger : %s\n", notifyTrigger ? "true" : "false");
+      notifyTrigger ? SET_AUDIO_SOURCE_ESP() : SET_AUDIO_SOURCE_CSR();
+    }
+    lastNotifyTrigger = notifyTrigger;
+#endif
+
+    if (vescSwitchState == FLOAT_SWITCH_ON && engineSoundEnable)
+    {
+
+      engineOn = true;
+      engineOffTimer = millis();
+    }
+    else
+    {
+      if (millis() - engineOffTimer > engineOffDelay)
+      {
+        engineOn = false;
+      }
+    }
+
+    lastVescSwitchState = vescSwitchState;
+
+    // if (xSemaphoreTake(xRpmSemaphore, portMAX_DELAY))
+    //{
+
+    // xSemaphoreGive(xRpmSemaphore); // Now free or "Give" the semaphore for others.
+    // }
+
+    // Core ID debug
+#if defined CORE_DEBUG
+    Serial.print("Running on core ");
+    Serial.println(coreId);
+#endif
+    // check_mute(500); // 500mS to check mute or unmute.
+    //  Feeding the RTC watchtog timer is essential!
+  }
+}
+
 // =======================================================================================================
 // MAIN LOOP, RUNNING ON CORE 1
 // =======================================================================================================
@@ -2599,72 +2672,9 @@ void setup()
 unsigned long  connectTimeout = millis();
 void loop()
 {
-  
-  for (;;)
-  { 
-
-
-  if ( vescConnected  ) // vesc connected 
-  {
-
-    if (xSemaphoreTake(xVescSemaphore, portMAX_DELAY))
-    {
-      vescEnableData = VESC.get_enable_item_data();
-      xSemaphoreGive(xVescSemaphore); // Now free or "Give" the semaphore for others.
-    }
-      // always check which item disable /enable 
-    //startWarnEnable=CHECK_BIT(vescEnableData,START_UP_WARNING_ENABLE_MASK_BIT);
-    engineSoundEnable=CHECK_BIT(vescEnableData,ENGINE_SOUND_ENABLE_MASK_BIT);
-
-    // state changed 
-     if ( lastEngineSoundEnable != engineSoundEnable   )
-
-     {
-
-      engineOn = false;
-      if (engineSoundEnable == false)
-      {
-            DEBUG_PRINT("ENGINE SOUND STATE Change to CSR!\n");
-          
-           
-            //delete task
-            if (engineTaskHandle != NULL)
-            {
-
-            vTaskDelete(engineTaskHandle);
-            engineTaskHandle = NULL;
-            if (engineTaskHandle == NULL)
-              DEBUG_PRINT("Task vescTask deleted successfully!\n");
-            } 
-            stop_variable_playback_timer();
-            change_audio_source(AUDIO_SOURCE_CSR);
-            SET_CSR_POWER_ON();
-            
-      }
-
-      else
-      {
-            DEBUG_PRINT("ENGINE SOUND STATE Change to ESP32 !\n");
-            // create engine sound TASK for engine sound
-            if (xTaskCreatePinnedToCore(engineTask_func, "engineTask", 1024*3, NULL, 1, &engineTaskHandle, 1) == pdPASS)
-            {
-            DEBUG_PRINT("Task engineTask created successfully\n");   
-            start_variable_playback_timer();
-            change_audio_source(AUDIO_SOURCE_ESP32);
-            SET_CSR_POWER_OFF();
-            }
-            else
-            {
-              DEBUG_PRINT("Task Failed to create engineTask\n");
-            }
-            
-      }
-     }
-     //update status
-     lastEngineSoundEnable = engineSoundEnable;
-  }
    
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-  }
+get_vesc_engine();
+check_vesc_enable();
+
 }
 
