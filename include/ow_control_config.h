@@ -78,7 +78,13 @@
 #define GEAR_RATIO 1
 #define WHEEL_DIAMETER 0.27 
 
-
+/// @brief Data source for calculating throttle
+typedef enum
+{
+	FLOAT_MOTOR_CURRENT = 0,
+	FLOAT_ERPM,
+	FLOAT_PID,
+} FloatSamplingType;
 /**idle warning time */
 typedef enum
 {
@@ -142,13 +148,12 @@ typedef enum
 //additional sound setting 
 volatile int startUpWarningPercentage=60; //start-up warning sound 
 #include "vehicles/sounds/welcome.h"
-volatile int overSpeedVolumePercentage=300; // over speed sound 
+volatile int overSpeedVolumePercentage=200; // over speed sound 
 #include "vehicles/sounds/overSpeed.h"
 volatile int lowVoltageVolumePercentage=100;
 #include "vehicles/sounds/lowVoltage.h"
 volatile int excuseMeVolumePercentage=200;
 #include "vehicles/sounds/hurley.h"
-
 volatile int vescNotConnectVolumePercentage=100;
 #include "vehicles/sounds/vescNC.h"
 

@@ -116,8 +116,8 @@ volatile int brakeVolumePercentage = 150; // Adjust the brake volume (usually = 
 
 // Choose the parking brake engaging sound (uncomment the one you want) --------
 volatile int parkingBrakeVolumePercentage = 150; // Adjust the brake volume (usually = 200%)
-#include "sounds/ParkingBrakeDummy.h" // If you don't want parking brake sound
-//#include "sounds/ParkingBrake.h" // Parking brake sound
+//#include "sounds/ParkingBrakeDummy.h" // If you don't want parking brake sound
+#include "sounds/ParkingBrake.h" // Parking brake sound
 
 // Choose the gear shifting sound (uncomment the one you want) --------
 volatile int shiftingVolumePercentage = 150; // Adjust the shifting volume (usually = 200%)
