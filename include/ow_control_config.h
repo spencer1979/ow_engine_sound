@@ -65,9 +65,9 @@
 #define PUSH_BUTTON_PIN 0
 // RGB LED ws2812 driver pin
 #define RGB_LED1_DATA_PIN 4
-#define RGB_LED1_COUNT 8
+#define RGB_LED1_COUNT 12
 #define RGB_LED2_DATA_PIN 2
-#define RGB_LED2_COUNT 8
+#define RGB_LED2_COUNT 12
 /**
  * rpm = erpm / (poles / 2.0)
 	kmh = ((rpm / 60.0) * wheel_d * M_PI / gearing) * 3.6;
@@ -77,7 +77,7 @@
 #define MOTOR_POLES 30
 #define GEAR_RATIO 1
 #define WHEEL_DIAMETER 0.27 
-
+#define NEOPIXEL_ENABLED 
 /// @brief Data source for calculating throttle
 typedef enum
 {

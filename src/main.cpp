@@ -135,6 +135,9 @@ CRGB rgb1LEDs[RGB_LED1_COUNT];
 CRGB rgb2LEDs[RGB_LED2_COUNT];
 #endif
 
+// Neopixel
+CRGB rgbLEDs[NEOPIXEL_COUNT];
+
 #ifdef USE_FAN_COOLING
 statusLED fan(false);
 #endif
@@ -197,7 +200,16 @@ volatile uint8_t dacOffset = 0;      // 128, but needs to be ramped up slowly to
 // Throttle
 int16_t currentThrottle = 0;      // 0 - 500(Throttle trigger input)
 int16_t currentThrottleFaded = 0; // faded throttle for volume calculations etc.
-
+// Lights
+int8_t lightsState = 0;                                  // for lights state machine
+volatile boolean lightsOn = false;                       // Lights on
+volatile boolean headLightsFlasherOn = false;            // Headlights flasher impulse (Lichthupe)
+volatile boolean headLightsHighBeamOn = false;           // Headlights high beam (Fernlicht)
+volatile boolean blueLightTrigger = false;               // Bluelight on (Blaulicht)
+boolean indicatorLon = false;                            // Left indicator (Blinker links)
+boolean indicatorRon = false;                            // Right indicator (Blinker rechts)
+boolean fogLightOn = false;                              // Fog light is on
+boolean cannonFlash = false;                             // Flashing cannon fire
 // Engine
 const int16_t maxRpm = 500;       // always 1000
 const int16_t minRpm = 0;         // always 0
@@ -1046,8 +1058,15 @@ void initIO()
   pinMode(PAM_MUTE_PIN, OUTPUT);
   pinMode(EPS_BUTTON_PIN, INPUT);
   // Neopixel setup
-  // FastLED.addLeds<NEOPIXEL, RGB_LED1_DATA_PIN>(rgb1LEDs, RGB_LED1_COUNT);
-  // FastLED.addLeds<NEOPIXEL, RGB_LED2_DATA_PIN>(rgb2LEDs, RGB_LED2_COUNT);
+  //FastLED.addLeds<NEOPIXEL, RGB_LED1_DATA_PIN>(rgb1LEDs, RGB_LED1_COUNT);
+  //FastLED.addLeds<NEOPIXEL, RGB_LED2_DATA_PIN>(rgb2LEDs, RGB_LED2_COUNT);
+  // Neopixel setup
+#ifdef NEOPIXEL_ENABLED
+  FastLED.addLeds<WS2812B, RGB_LED1_DATA_PIN,GRB>(rgbLEDs, NEOPIXEL_COUNT);
+  FastLED.setCorrection( TypicalLEDStrip );
+  FastLED.setBrightness(NEOPIXEL_BRIGHTNESS);
+  FastLED.setMaxPowerInVoltsAndMilliamps( 5, MAX_POWER_MILLIAMPS);
+#endif
   // #ifdef USE_DUAL_HEAD_LIGHT
   //   headLight0.begin(LED1_PIN, 1, 20000); // Timer 1, 20kHz
   //   headLight1.begin(LED2_PIN, 1, 20000); // Timer 1, 20kHz
@@ -1056,10 +1075,211 @@ void initIO()
   // #endif
   //   tailLight.begin(LED3_PIN, 2, 20000); // Timer 2, 20kHz
   SET_AUDIO_MUTE();
-  vTaskDelay(50 / portTICK_PERIOD_MS);
-  SET_CSR_POWER_ON();
   vTaskDelay(100 / portTICK_PERIOD_MS);
   SET_CSR_POWER_OFF();
+  vTaskDelay(100 / portTICK_PERIOD_MS);
+}
+//
+// =======================================================================================================
+// NEOPIXEL WS2812 LED
+// =======================================================================================================
+//
+
+void updateRGBLEDs() {
+
+  static uint32_t lastNeopixelTime = millis();
+  static bool knightRiderLatch = false;
+  static bool unionJackLatch = false;
+  static bool neopixelShow = false;
+knightRiderLatch=true;
+#ifdef NEOPIXEL_DEMO // Demo -------------------------------------------------------------
+  if (millis() - lastNeopixelTime > 20) { // Every 20 ms
+    lastNeopixelTime = millis();
+
+    uint8_t hue = map(1500, 1000, 2000, 0, 255);
+
+    rgbLEDs[0] = CHSV(hue, hue < 255 ? 255 : 0, hue > 0 ? 255 : 0);
+    rgbLEDs[1] = CRGB::Red;
+    rgbLEDs[2] = CRGB::White;
+    rgbLEDs[3] = CRGB::Yellow;
+    rgbLEDs[4] = CRGB::Blue;
+    rgbLEDs[5] = CRGB::Green;
+    rgbLEDs[6] = CRGB::Red;
+    rgbLEDs[7] = CRGB::White;
+
+    neopixelShow = true;
+  }
+#endif
+
+#ifdef NEOPIXEL_KNIGHT_RIDER // Knight Rider scanner -------------------------------------
+  static int16_t increment = 1;
+  static int16_t counter = 0;
+
+  if (millis() - lastNeopixelTime > 91) { // Every 91 ms (must match with sound)
+    lastNeopixelTime = millis();
+    DEBUG_PRINT("LED\n");
+    if (sirenTrigger || knightRiderLatch) { // Only active, if siren signal!
+      if (counter >= NEOPIXEL_COUNT - 1) increment = -1;
+      if (counter <= 0) increment = 1;
+      knightRiderLatch = (counter > 0);
+      rgbLEDs[counter] = CRGB::Red;
+      counter += increment;
+    }
+    else {
+      counter = 0;
+    }
+    for (int i = 0; i < NEOPIXEL_COUNT; i++) {
+      rgbLEDs[i].nscale8(160);  //160
+    }
+    neopixelShow = true;
+  }
+#endif
+
+#ifdef NEOPIXEL_BLUELIGHT // Bluelight ----------------------------------------------------
+  static uint32_t lastNeopixelBluelightTime = millis();
+
+  if (millis() - lastNeopixelTime > 20) { // Every 20 ms
+    lastNeopixelTime = millis();
+    if (blueLightTrigger) {
+      if (millis() - lastNeopixelBluelightTime > 0) { // Step 1
+        rgbLEDs[0] = CRGB::Red;
+        rgbLEDs[1] = CRGB::Blue;
+        rgbLEDs[3] = CRGB::Red;
+        rgbLEDs[4] = CRGB::Blue;
+        rgbLEDs[6] = CRGB::Red;
+        rgbLEDs[7] = CRGB::Blue;
+      }
+      if (millis() - lastNeopixelBluelightTime > 160) { // Step 2
+        fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::Black);
+      }
+      if (millis() - lastNeopixelBluelightTime > 300) { // Step 3
+        rgbLEDs[0] = CRGB::Blue;
+        rgbLEDs[1] = CRGB::Red;
+        rgbLEDs[3] = CRGB::Blue;
+        rgbLEDs[4] = CRGB::Red;
+        rgbLEDs[6] = CRGB::Blue;
+        rgbLEDs[7] = CRGB::Red;
+      }
+      if (millis() - lastNeopixelBluelightTime > 460) { // Step 4
+        fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::Black);
+      }
+      if (millis() - lastNeopixelBluelightTime > 600) { // Step 5
+        lastNeopixelBluelightTime = millis();
+      }
+    }
+    else fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::Black); // Off
+    neopixelShow = true;
+  }
+#endif
+
+#ifdef NEOPIXEL_UNION_JACK // United Kingdom animation ---------------------------------------
+  static uint32_t lastNeopixelUnionJackTime = millis();
+  static uint8_t animationStep = 1;
+
+  if (sirenTrigger || unionJackLatch) {
+    unionJackLatch = true;
+    if (millis() - lastNeopixelUnionJackTime > 789) { // Every 789 ms (must match with sound "BritishNationalAnthemSiren.h")
+      lastNeopixelUnionJackTime = millis();
+      if (animationStep == 1 || animationStep == 9) { // Step 1 or 9
+        rgbLEDs[0] = CRGB::Red;
+        rgbLEDs[1] = CRGB::Blue;
+        rgbLEDs[2] = CRGB::Blue;
+        rgbLEDs[3] = CRGB::Red;
+        rgbLEDs[4] = CRGB::Red;
+        rgbLEDs[5] = CRGB::Blue;
+        rgbLEDs[6] = CRGB::Blue;
+        rgbLEDs[7] = CRGB::Red;
+      }
+      if (animationStep == 2 || animationStep == 8) { // Step 2 or 8
+        rgbLEDs[0] = CRGB::White;
+        rgbLEDs[1] = CRGB::Red;
+        rgbLEDs[2] = CRGB::Blue;
+        rgbLEDs[3] = CRGB::Red;
+        rgbLEDs[4] = CRGB::Red;
+        rgbLEDs[5] = CRGB::Blue;
+        rgbLEDs[6] = CRGB::Red;
+        rgbLEDs[7] = CRGB::White;
+      }
+      if (animationStep == 3 || animationStep == 7) { // Step 3 or 7
+        rgbLEDs[0] = CRGB::Blue;
+        rgbLEDs[1] = CRGB::White;
+        rgbLEDs[2] = CRGB::Red;
+        rgbLEDs[3] = CRGB::Red;
+        rgbLEDs[4] = CRGB::Red;
+        rgbLEDs[5] = CRGB::Red;
+        rgbLEDs[6] = CRGB::White;
+        rgbLEDs[7] = CRGB::Blue;
+      }
+      if (animationStep == 4 || animationStep == 5 || animationStep == 6) { // Step 4
+        rgbLEDs[0] = CRGB::Red;
+        rgbLEDs[1] = CRGB::Red;
+        rgbLEDs[2] = CRGB::Red;
+        rgbLEDs[3] = CRGB::Red;
+        rgbLEDs[4] = CRGB::Red;
+        rgbLEDs[5] = CRGB::Red;
+        rgbLEDs[6] = CRGB::Red;
+        rgbLEDs[7] = CRGB::Red;
+      }
+      if (animationStep == 10) { // Step 10
+        fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::Black);
+        animationStep = 0;
+        unionJackLatch = false;
+      }
+      animationStep ++;
+      neopixelShow = true;
+    }
+  }
+  else {
+    animationStep = 1;
+    lastNeopixelUnionJackTime = millis();
+  }
+#endif
+
+#ifdef NEOPIXEL_HIGHBEAM // Neopixel bar is used as high beam as well --------------------
+  static uint32_t lastNeopixelHighbeamTime = millis();
+  if (millis() - lastNeopixelHighbeamTime > 20) { // Every 20 ms
+    lastNeopixelHighbeamTime = millis();
+
+    if (!knightRiderLatch && !sirenTrigger && !blueLightTrigger && !unionJackLatch) {
+      if (headLightsHighBeamOn || headLightsFlasherOn) fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::White);
+      else fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::Black);
+    }
+    neopixelShow = true;
+  }
+#endif
+
+#ifdef NEOPIXEL_B33LZ3BUB // B33lz3bub Austria cab light ---------------------------------
+  if (millis() - lastNeopixelTime > 20) { // Every 20 ms
+    lastNeopixelTime = millis();
+
+    uint8_t hue = map(pulseWidth[7], 1000, 2000, 0, 255);   // map pulseWidth[7] from poti VRA to hue
+    if (hue <= 20) {    // LEDs off
+      fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::Black);
+    }
+    else if (hue > 20 && hue < 235) {     // different colors depending on potentiometer VRA CH7
+      for (int i = 0; i < NEOPIXEL_COUNT; i++) {
+        rgbLEDs[i] = CHSV(hue, hue < 255 ? 255 : 0, hue > 0 ? 255 : 0);
+      }
+    }
+    else if (hue >= 235 && hue < 250) {   // colors red-white-red -> flag color of Austria ;-)
+      rgbLEDs[0] = CRGB::Red;
+      rgbLEDs[1] = CRGB::White;
+      rgbLEDs[2] = CRGB::Red;
+    }
+    else {
+      fill_solid(rgbLEDs, NEOPIXEL_COUNT, CRGB::White);  // only white
+    }
+    neopixelShow = true;
+  }
+#endif
+
+  // Neopixel refresh for all options above ------------------------------------------------
+  static uint32_t lastNeopixelRefreshTime = millis();
+  if (millis() - lastNeopixelRefreshTime > 20 && neopixelShow) { // Every 20 ms
+    lastNeopixelRefreshTime = millis();
+    FastLED.show();
+    neopixelShow = false;
+  }
 }
 
 //
@@ -2621,9 +2841,13 @@ void setup()
 //
 void loop()
 {
- 
+
     vesc_engine_loop();
-    
+      // RGB LED control
+#if defined NEOPIXEL_ENABLED
+  updateRGBLEDs();
+#endif
+
 
 }
 
