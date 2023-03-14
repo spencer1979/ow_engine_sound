@@ -1056,9 +1056,9 @@ void initIO()
   // #endif
   //   tailLight.begin(LED3_PIN, 2, 20000); // Timer 2, 20kHz
   SET_AUDIO_MUTE();
-  vTaskDelay(50 / portTICK_PERIOD_MS);
-  SET_CSR_POWER_ON();
-  vTaskDelay(100 / portTICK_PERIOD_MS);
+  // vTaskDelay(50 / portTICK_PERIOD_MS);
+  // SET_CSR_POWER_ON();
+  // vTaskDelay(100 / portTICK_PERIOD_MS);
   SET_CSR_POWER_OFF();
 }
 
@@ -2349,6 +2349,8 @@ static void vesc_connected()
     // EXT_DCDC_ENABLE_MASK_BIT is not avalible
     startWarnEnable = CHECK_BIT(vescEnableData, START_UP_WARNING_ENABLE_MASK_BIT);
     engineSoundEnable = CHECK_BIT(vescEnableData, ENGINE_SOUND_ENABLE_MASK_BIT);
+    lastVescConnected = vescConnected;
+   
     DEBUG_PRINT("Start warning Enable : %s\n", startWarnEnable ? "true" : "false");
     DEBUG_PRINT("Enable sound Enable : %s\n", engineSoundEnable ? "true" : "false");
     DEBUG_PRINT("Low Battery Warn Enable : %s\n", engineSoundEnable ? "true" : "false");
@@ -2413,6 +2415,7 @@ static void vesc_connected()
       // 切換音源到ESP32
       change_audio_source(AUDIO_SOURCE_ESP32);
       SET_CSR_POWER_OFF();
+     
     }
     else
     { // 切換音源到csr8645
@@ -2420,6 +2423,8 @@ static void vesc_connected()
       stop_variable_playback_timer();
       SET_CSR_POWER_ON();
     }
+  
+   lastEngineSoundEnable = engineSoundEnable;
 
     // 建立警告聲觸發Task
     if (xTaskCreatePinnedToCore(vesc_warningTask_func, "warningTask", 1024 * 10, NULL, 2, &warningTaskHandle, 0) == pdPASS)
@@ -2471,7 +2476,7 @@ void ow_setup()
   // VESC serial
   Serial2.begin(115200, SERIAL_8N1, ESP_VESC_TX_PIN, ESP_VESC_RX_PIN);
 
-// #define   VESC_DEBUG
+#define   VESC_DEBUG
 #ifdef VESC_DEBUG
   VESC.setDebugPort(&Serial);
 #endif
@@ -2490,6 +2495,7 @@ void ow_setup()
       if (VESC.get_vesc_ready()) // check vesc fw version , if not connect will get 0.0
       {
         vescConnected = true;
+        lastVescConnected = vescConnected;
         DEBUG_PRINT(" VESC is connected\n");
         break;
       }
@@ -2497,6 +2503,8 @@ void ow_setup()
     if (vescConnected)
     {
       break;
+
+   
     }
     else
     {
@@ -2509,8 +2517,7 @@ void ow_setup()
   vesc_connected();
   vesc_not_connected();
   // update status
-  lastVescConnected = vescConnected;
-  lastEngineSoundEnable = engineSoundEnable;
+
 }
 
 
